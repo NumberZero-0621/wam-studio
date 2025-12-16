@@ -83,9 +83,9 @@ export default class WamAudioLoopBrowser extends HTMLElement {
         #main {
             --primary-bg-color: #31353a; /* Couleur de fond primaire */
             --secondary-bg-color: #1c1e21; /* Couleur de fond secondaire */
-            --text-color: #F8F9FA; /* Couleur du texte */
-            --accent-color: #505dca; /* Couleur d'accent */
-            --hover-bg-color: #505dca; /* Couleur de fond au survol */
+            --text-color: #e3e3e3ff; /* Couleur du texte */
+            --accent-color: #ffffffff; /* Couleur d'accent */
+            --hover-bg-color: #3b3b3bff; /* Couleur de fond au survol */
           }
 
           #mainWrapper {
@@ -302,6 +302,10 @@ export default class WamAudioLoopBrowser extends HTMLElement {
             display: flex;
             align-items: center;
             gap: 0.5rem; /
+          }
+
+          #reset-filters-btn{
+            background-color: #2e2e2eff;
           }
 
           #reset-filters-btn:hover{

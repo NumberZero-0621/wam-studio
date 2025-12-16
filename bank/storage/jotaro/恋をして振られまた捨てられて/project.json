@@ -1,0 +1,43 @@
+{
+  "version": [
+    1,
+    0
+  ],
+  "host": {
+    "playhead": 16129.1279296875,
+    "tempo": 120,
+    "time_signature": [
+      4,
+      4
+    ],
+    "volume": 1
+  },
+  "tracks": [
+    {
+      "name": "Track 1",
+      "color": "#9C3DB5",
+      "muted": false,
+      "solo": false,
+      "volume": 0.5,
+      "balance": 0,
+      "regions": [],
+      "automations": []
+    },
+    {
+      "name": "unit2.mp3",
+      "color": "#21EA02",
+      "muted": false,
+      "solo": false,
+      "volume": 0.9,
+      "balance": 0,
+      "regions": [
+        {
+          "content_name": "track-6-region-10.wav",
+          "type": "SAMPLE",
+          "start": 0
+        }
+      ],
+      "automations": []
+    }
+  ]
+}

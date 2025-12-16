@@ -208,15 +208,15 @@ template.innerHTML = /*html*/`
 }
 
 .toggle-control:hover, .toggle-control.active {
-    background-color: #5c69cc;
-    color: white;
-    border-color: #5c69cc;
+    background-color: #cececeff;
+    color: black;
+    border-color: #dfdfdfff;
 }
 
 .toggle-control:active {
-    background-color: #444fa6;
-    border-color: #444fa6;
-    color: white;
+    background-color: #fafafaff;
+    border-color: #e7e7e7ff;
+    color: black;
 }
 
 .toggle-control.disabled {
@@ -233,10 +233,10 @@ template.innerHTML = /*html*/`
 }
 
 .toggle-control:hover.active {
-  background-color: #5c69cc;
-  color: white;
-  border-color: #5c69cc;
-  box-shadow: 0 0 5px #5c69cc;
+  background-color: #fafafaff;
+  border-color: #e7e7e7ff;
+  color: black;
+  box-shadow: 0 0 5px #eeeeeeff;
 }
 
 #loading-container {
@@ -251,7 +251,7 @@ template.innerHTML = /*html*/`
     padding: 10px;
     height: 100%;
     width: 0%;
-    background: rgb(92, 105, 204);
+    background: rgba(190, 190, 190, 1);
     transition: width 0.3s ease-in-out;
 }
 

@@ -23,7 +23,10 @@ module.exports = (env, argv) => {
                 "Cross-Origin-Opener-Policy": "same-origin"
             },
             compress: true,
-            static: false,
+            static: {
+                directory: path.join(__dirname, 'static'),
+                watch: true,
+            },
             client: {
                 logging: "warn",
                 overlay: {

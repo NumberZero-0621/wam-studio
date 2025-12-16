@@ -8,7 +8,7 @@ node_modules
 storage/*
 *.env
 *.pem
-/bank/storage/
+
 /bank/loops
 
 /pedalboard2/bin/

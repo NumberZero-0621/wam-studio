@@ -39,6 +39,7 @@ body {
     flex-direction: column;
 }
 
+/* メニューバー: 画面上部のナビゲーションバー。再生ボタンや設定などが含まれます。 */
 #menu-bar {
     border: 1px solid black;
     border-top: none;
@@ -50,6 +51,7 @@ body {
     height: 52px;
 }
 
+/* 左側コントロール: メニューバー左側のボタン群 */
 #left-controls {
     display: flex;
     flex-direction: row;
@@ -66,6 +68,7 @@ body {
     width: 100%;
 }
 
+/* アプリケーション全体: メニューバー以下のメインコンテンツエリア */
 #app {
     display: flex;
     flex-grow: 1;
@@ -73,6 +76,7 @@ body {
     margin-bottom: 0;
     position: relative;
 }
+/* 左側コンテナ: トラックリストや波形エディタを含む左側のエリア */
 #left-container {
     width: 0;
     flex-grow: 1;
@@ -93,6 +97,7 @@ body {
     border-left: 1px solid black;
 }
 
+/* トラックエディタ: トラックリストとタイムラインを含む行 */
 #track-editor {
     height: 100%;
     width: 100%;
@@ -102,6 +107,7 @@ body {
     border-bottom: 1px solid black;
 }
 
+/* トラックヘッダー: 各トラックのコントロール（ミュート、ソロ、名前など）がある左側の列 */
 #track-container {
     flex: 0 0 var(--track-container-width);
     min-width: var(--track-container-width);
@@ -140,6 +146,7 @@ body {
     align-items: center;
 }
 
+/* エディタエリア: 波形やノートを表示するタイムラインのコンテナ */
 #editor {
     flex-grow: 1;
     width: 100%;
@@ -164,6 +171,7 @@ body {
     flex-direction: row;
 }
 
+/* エディタキャンバス: 実際に波形が描画される領域 */
 #editor-canvas {
     flex-grow: 1;
 }
@@ -179,6 +187,7 @@ body {
     z-index: 0;
 }
 
+/* プラグインエディタ: 画面下部のプラグイン（エフェクト等）を表示するエリア */
 #plugin-editor {
 
     height: 25px;
@@ -216,6 +225,7 @@ body {
 }
 
 
+/* マスタートラック: 画面右側の全体音量などを管理するセクション */
 #main-track {
     min-width: 200px;
     background: rgb(23, 23, 26);
@@ -256,6 +266,8 @@ body {
 
 
 /* CUSTOM ELEMENTS */
+
+/* メニュー項目: ヘッダー内の個々のボタン（File, Editなど） */
 .menu-item {
     min-width: 55px;
     display: flex;
@@ -276,11 +288,11 @@ body {
 }
 
 .menu-item.main {
-    background-color: rgb(80, 93, 202);
+    background-color: rgb(37, 37, 37);
 }
 
 .menu-item.main:hover {
-    background-color: rgb(92, 105, 204);
+    background-color: rgb(200, 200, 200);
 }
 
 .timer-item {
@@ -299,7 +311,7 @@ body {
 
 .timer {
     font-family: Helvetica, monospace;
-    color: rgb(80, 93, 202);
+    color: rgb(205, 205, 205);
     font-size: 30px;
 }
 
@@ -389,9 +401,17 @@ body {
             user-select: none;
 }
 
+.new-track-text:hover {
+    color: #000
+}
+
 .new-track:hover {
-    background: rgb(80, 93, 202);
+    background: rgb(200, 200, 200);
     cursor: pointer;
+}
+
+.new-track:hover .new-track-text {
+    color: black;
 }
 
   
@@ -600,6 +620,7 @@ body.loading > *:not(.loading-overlay) {
     pointer-events: none;  /* This prevents interactions with blurred elements */
 }
 
+/* ロード画面: アプリ起動時やプロジェクト読み込み時のオーバーレイ */
 .loading-overlay {
     position: fixed;
     top: 0;
