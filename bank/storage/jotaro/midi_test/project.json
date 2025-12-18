@@ -4,7 +4,7 @@
     0
   ],
   "host": {
-    "playhead": 13499,
+    "playhead": 1229.333251953125,
     "tempo": 120,
     "time_signature": [
       4,
@@ -15,58 +15,31 @@
   "tracks": [
     {
       "name": "Track 1",
-      "color": "#77C95D",
+      "color": "#30A8D2",
       "muted": false,
       "solo": false,
       "volume": 0.5,
       "balance": 0,
-      "regions": [
-        {
-          "content_name": "track-1-region-1.wamstudiomidi",
-          "type": "MIDI",
-          "start": 2499.9999999999995
-        },
-        {
-          "content_name": "track-1-region-2.wamstudiomidi",
-          "type": "MIDI",
-          "start": 3500
-        },
-        {
-          "content_name": "track-1-region-4.wamstudiomidi",
-          "type": "MIDI",
-          "start": 6000
+      "plugin": {
+        "name": "Pedalboard2",
+        "state": {
+          "plugins": [
+            {
+              "id": 0,
+              "wam_id": "com.sequencerParty.soundfont",
+              "state": {
+                "instrument": "acoustic_grand_piano"
+              }
+            }
+          ],
+          "library": "http://localhost:6002/wamstudio_library.json"
         }
-      ],
-      "automations": []
-    },
-    {
-      "name": "unit2.mp3",
-      "color": "#F69678",
-      "muted": false,
-      "solo": false,
-      "volume": 0.9,
-      "balance": 0,
+      },
       "regions": [
         {
-          "content_name": "track-2-region-0.wav",
-          "type": "SAMPLE",
+          "content_name": "track-1-region-0.wamstudiomidi",
+          "type": "MIDI",
           "start": 0
-        }
-      ],
-      "automations": []
-    },
-    {
-      "name": "Track 4",
-      "color": "#DE69C1",
-      "muted": false,
-      "solo": false,
-      "volume": 0.5,
-      "balance": 0,
-      "regions": [
-        {
-          "content_name": "track-3-region-3.wamstudiomidi",
-          "type": "MIDI",
-          "start": 2000
         }
       ],
       "automations": []

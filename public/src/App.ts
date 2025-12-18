@@ -33,6 +33,8 @@ import PluginsView from "./Views/PluginsView";
 import ProjectView from "./Views/ProjectView";
 import SettingsView from "./Views/SettingsView";
 import TracksView from "./Views/TracksView";
+import PianoRollController from "./Controllers/Editor/PianoRoll/PianoRollController";
+import AutoSaveController from "./Controllers/AutoSaveController";
 
 /**
  * Main class for the host. Start all controllers, views and models. All controllers and views are accessible frome this app.
@@ -54,6 +56,8 @@ export default class App {
     keyboardController: KeyboardController;
     exportController: ExporterController;
     loopController: LoopController;
+    pianoRollController: PianoRollController;
+    autoSaveController: AutoSaveController;
 
     hostView: HostView;
     tracksView: TracksView;
@@ -72,6 +76,8 @@ export default class App {
 
     undoManager:UndoManager;
     audioLoopBrowser: any;
+
+    public static TOOL_MODE: "SELECT" | "PEN" = "SELECT";
 
     constructor() {
         this.loader = new Loader(this);
@@ -104,6 +110,8 @@ export default class App {
         this.keyboardController = new KeyboardController(this);
         this.exportController = new ExporterController(this);
         this.loopController = new LoopController(this);
+        this.pianoRollController = new PianoRollController(this);
+        this.autoSaveController = new AutoSaveController(this);
         
         this.hostController.addDraggableWindow(this.pluginsView, this.latencyView, this.settingsView, 
             this.projectView, this.aboutView, this.keyboardShortcutsView);
@@ -131,6 +139,14 @@ export default class App {
     async initHost() {
         await this.host.init()
         this.hostController.bindNodeListeners();
+
+        // Auto-save Restore
+        await this.autoSaveController.init();
+        const restored = await this.autoSaveController.restore();
+        if (restored) {
+            console.log("Session restored from auto-save.");
+        }
+        this.autoSaveController.start();
     }
 
     /**

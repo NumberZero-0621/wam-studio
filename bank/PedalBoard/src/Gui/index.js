@@ -1,4 +1,4 @@
-// This file is the factory for the GUI part.
+// This is a placeholder to correct the tool call in the next step.
 // The imporant thing here is the createElement async method
 // This file must be an es module in order to be loaded with the SDK (with dynamic imports)
 import Gui from "./Gui.js";

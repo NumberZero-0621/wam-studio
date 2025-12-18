@@ -24,6 +24,9 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
 
     /** The background of the region, borders included. */
     private _background: Graphics;
+    
+    /** The mask of the region. */
+    private _customMask: Graphics;
 
     /** The contained region  */
     private region_width: number;
@@ -40,8 +43,11 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
 
         this._background = new Graphics();
         this._wave = new Graphics();
+        this._customMask = new Graphics();
         this.addChild(this._background);
         this.addChild(this._wave);
+        this.addChild(this._customMask);
+        this.mask = this._customMask;
     }
 
     /**
@@ -55,9 +61,11 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
     public initializeRegionView(color: string, region: REGION): void {
         this.position.x = region.pos
         this.region_width = region.width
+        this._wave.position.x = 0;
 
         this.drawContent(this._wave, color, region, 0, region.duration)
         this.drawBackground()
+        this.updateMask()
     }
 
     /**
@@ -71,7 +79,9 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
 
     public redraw(color: string, region: REGION){
         this.region_width = region.width
+        this._wave.position.x = 0;
         this.drawBackground()
+        this.updateMask()
         this._wave.clear()
         this.drawContent(this._wave, color, region, 0, region.duration)
     }
@@ -85,7 +95,9 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
      */
     public draw(color: string, region: REGION, start: number=0, from: number=region.duration){
         this.region_width = region.width
+        this._wave.position.x = 0;
         this.drawBackground()
+        this.updateMask()
         this.drawContent(this._wave, color, region, start, from)
     }
 
@@ -117,17 +129,40 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
     
 
     /**
-     * Scales the region given the new duration and the current ratio of pixels by milliseconds.
+     * Updates the region view to simulate trimming/extending without stretching the content.
      *
-     * @param duration - The duration in seconds of the region.
-     * @param start - The start of the region in milliseconds.
+     * @param duration - The new duration in seconds.
+     * @param start - The new start position in milliseconds.
+     * @param originalStart - The original start position in milliseconds (before resize began).
      */
-    public stretch(duration: number, start: number): void {
+    public stretch(duration: number, start: number, originalStart: number): void {
         this.scale.x = 1;
         const newWidth = (duration * 1000) / RATIO_MILLS_BY_PX;
-        const scaleFactor = newWidth / this.width
-        this.scale.x *= scaleFactor;
+        
+        // Update position
         this.position.x = start / RATIO_MILLS_BY_PX;
+        
+        // Shift content to counter-act the position change, keeping it stationary in world space
+        // if start > originalStart (shrunk from left), we moved right. Content must move left.
+        // offset = originalStart - start. 
+        // e.g. orig=0, start=100. offset=-100.
+        const offset = (originalStart - start) / RATIO_MILLS_BY_PX;
+        this._wave.position.x = offset;
+
+        // Update visual width (background and mask)
+        // We temporarily update region_width for drawBackground to work, 
+        // but we don't save it permanently as 'region.width' until commit.
+        // Actually, drawBackground uses this.region_width.
+        this.region_width = newWidth;
+        this.drawBackground();
+        this.updateMask();
+    }
+
+    private updateMask(): void {
+        this._customMask.clear();
+        this._customMask.beginFill(0x000000);
+        this._customMask.drawRect(0, 0, this.region_width, HEIGHT_TRACK);
+        this._customMask.endFill();
     }
 
     /** Draws the background of the region. It will check if the region is selected or not to draw the border. */
@@ -140,6 +175,14 @@ export default abstract class RegionView<REGION extends RegionOf<REGION>> extend
         this._background.beginFill(0xffffff, 0.3);
         this._background.lineStyle({width: 1, color: color});
         this._background.drawRect(0, 0, this.region_width, HEIGHT_TRACK-1);
+    }
+
+    /**
+     * Returns the visual width of the region (defined by the background/mask),
+     * ignoring the potentially larger bounds of the waveform content.
+     */
+    public override get width(): number {
+        return this.region_width * this.scale.x;
     }
 
 }

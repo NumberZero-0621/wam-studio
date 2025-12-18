@@ -82,6 +82,51 @@ export default class EditorController {
         this._app = app;
 
         this.bindEvents();
+        this.bindSnapEvents();
+    }
+
+    private bindSnapEvents() {
+        const hostView = this._app.hostView;
+        
+        hostView.snapBtnArrow.addEventListener("click", (e) => {
+             const display = hostView.snapMenu.style.display;
+             hostView.snapMenu.style.display = display === "none" ? "block" : "none";
+             e.stopPropagation();
+        });
+
+        const updateViews = () => {
+             this._view.grid.updateGrid();
+             this._app.pianoRollController.redraw();
+        };
+
+        const setSnap = (res: number) => {
+            this._view.snapResolution = res;
+            hostView.updateSnapMenu(this._view.snapResolution, this._view.snapTriplet);
+            updateViews();
+        };
+
+        hostView.snap1_1.addEventListener("click", () => setSnap(1));
+        hostView.snap1_2.addEventListener("click", () => setSnap(2));
+        hostView.snap1_4.addEventListener("click", () => setSnap(4));
+        hostView.snap1_8.addEventListener("click", () => setSnap(8));
+        hostView.snap1_16.addEventListener("click", () => setSnap(16));
+        hostView.snap1_32.addEventListener("click", () => setSnap(32));
+
+        hostView.snapTriplet.addEventListener("click", (e) => {
+             this._view.snapTriplet = !this._view.snapTriplet;
+             hostView.updateSnapMenu(this._view.snapResolution, this._view.snapTriplet);
+             updateViews();
+             e.stopPropagation();
+        });
+
+        document.addEventListener("click", (e) => {
+            if (hostView.snapMenu.style.display === "block") {
+                hostView.snapMenu.style.display = "none";
+            }
+        });
+        
+        // Initial update
+        hostView.updateSnapMenu(this._view.snapResolution, this._view.snapTriplet);
     }
 
     public async zoomTo(new_zoom_level: number, respect_step: boolean=false): Promise<void>{
@@ -120,6 +165,16 @@ export default class EditorController {
         this._app.automationController.updateBPFWidth()
         this._view.spanZoomLevel.innerHTML = ("x" + ZOOM_LEVEL.toFixed(2))
         await Promise.all(this._app.tracksController.tracks.map( track => this._view.stretchRegions(track)))
+        
+        // Force immediate redraw to avoid debounce delay
+        this._app.tracksController.tracks.forEach(track => {
+            track.regions.forEach(region => {
+                this._app.regionsController.updateRegionView(region as RegionOf<any>);
+            });
+        });
+
+        // Refresh Piano Roll if open
+        this._app.pianoRollController.redraw();
 
         if(ZOOM_LEVEL!=MAX_ZOOM_LEVEL){
             this._app.hostView.zoomInBtn.classList.add("zoom-enabled")

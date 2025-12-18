@@ -23,7 +23,7 @@ export default class InvalidRegionView extends RegionView<MIDIRegion> {
      * @param region - The region that will contain the buffer to draw.
      */
     override drawContent(target: Graphics, color: string, region: MIDIRegion){
-        let range = this.width = region.duration/RATIO_MILLS_BY_PX;
+        let range = region.width;
         this.height=HEIGHT_TRACK
         this.scale.x = 1;
 

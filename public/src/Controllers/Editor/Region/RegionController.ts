@@ -1,4 +1,4 @@
-import { FederatedPointerEvent } from "pixi.js";
+import { FederatedPointerEvent, Point, Graphics } from "pixi.js";
 import App, { crashOnDebug } from "../../../App";
 import { MIDI } from "../../../Audio/MIDI/MIDI";
 import { RATIO_MILLS_BY_PX } from "../../../Env";
@@ -7,66 +7,75 @@ import Region, { RegionOf, RegionType } from "../../../Models/Region/Region";
 import SampleRegion from "../../../Models/Region/SampleRegion";
 import Track from "../../../Models/Track/Track";
 import { isKeyPressed, registerOnKeyDown, registerOnKeyUp } from "../../../Utils/keys";
-import EditorView from "../../../Views/Editor/EditorView.js";
+import EditorView from "../../../Views/Editor/EditorView";
 import MIDIRegionView from "../../../Views/Editor/Region/MIDIRegionView";
 import RegionView from "../../../Views/Editor/Region/RegionView";
 import SampleRegionView from "../../../Views/Editor/Region/SampleRegionView";
 import WaveformView from "../../../Views/Editor/WaveformView.js";
 import { SelectionManager } from "../Track/SelectionManager";
-
+import { audioCtx } from "../../../index";
+import { lightenColor } from "../../../Utils/Color";
 
 /**
  * Class that control the regions of the editor.
  */
 export default class RegionController {
 
-  /**
-   * Factory functions to create a region view from a region.
-   */
   private static regionViewFactories: { [key: RegionType<any>] : ((editor:EditorView,from:RegionOf<any>)=>RegionView<any>) }={
     [MIDIRegion.TYPE]: (editor,region)=>new MIDIRegionView(editor,region as MIDIRegion),
     [SampleRegion.TYPE]: (editor,region)=>new SampleRegionView(editor,region as SampleRegion)
   }
 
-  /**
-   * Number of region that is incremented for each time a region is created.
-   */
   public regionIdCounter: number;
-
-  /** Route Application. */
   protected _app: App;
-
-  /** Editor's Application of PIXI.JS. */
   protected _editorView: EditorView;
-
-  /**
-   * The offset on X axis when a region is moved.
-   * Represents the position on the region view itself, where the user clicked.
-   */
   protected _offsetX: number;
-
-  /* for disabling snapping is shift key is pressed and global snapping enabled */
   protected snappingDisabled: boolean = false;
-
-  /* for computing delta between two pointermove events */
   protected previousMouseXPos: number = 0;
-
-  /** The region that is currently dragged and its view */
-  protected draggedRegionState: {region:RegionOf<any>, initialPos:number, initialTrackId:number}|undefined=undefined
+  private _dragGhosts: Graphics[] = [];
+  
+  protected draggedRegionState: {
+      anchorRegion: RegionOf<any>,
+      initialAnchorPos: number,
+      initialGlobalX: number,
+      hasMoved: boolean,
+      regionToDeselect: RegionOf<any> | null,
+      draggingRegions: { 
+          region: RegionOf<any>, 
+          initialPos: number, 
+          initialTrackId: number, 
+          offsetMs: number 
+      }[]
+  } | undefined = undefined
 
   protected oldTrackWhenMoving!: Track;
   protected newTrackWhenMoving!: Track;
-
-  /* For copy-paste region */
   private regionClipboard: {region: RegionOf<any>, track: Track}
-
-  // scroll smoothly viewport left or right
   scrollingRight: boolean = false;
   scrollingLeft: boolean = false;
   incrementScrollSpeed: number = 0;
   viewportAnimationLoopId: number = 0;
   selectedRegionEndOutsideViewport: boolean = false;
   selectedRegionStartOutsideViewport: boolean = false;
+
+  // Mode States
+  private _isSelecting: boolean = false;
+  private _selectionStart: Point = new Point();
+  private _isCreating: boolean = false;
+  private _creationStart: number = 0;
+  private _newRegion: MIDIRegion | null = null;
+  private _targetTrack: Track | null = null;
+
+  // Resize State
+  private _isResizing: boolean = false;
+  private _resizeState: {
+      mode: 'LEFT' | 'RIGHT';
+      initialX: number;
+      region: RegionOf<any>;
+      initialStart: number;
+      initialDuration: number;
+  } | null = null;
+  private readonly RESIZE_ZONE = 5;
 
   doIt
 
@@ -75,14 +84,10 @@ export default class RegionController {
     this._editorView = app.editorView
     this.regionIdCounter = 0
     this.doIt=app.doIt.bind(app)
-
     this.bindEvents()
     this.initSelection()
   }
 
-
-
-  //// UTILS ////
   public getView<T extends RegionOf<T>>(region: T, callback?: (view:RegionView<T>)=>void): RegionView<T>
   public getView<T extends RegionOf<T>>(region: T|undefined|null, callback?: (view:RegionView<T>)=>void): RegionView<T>|undefined
   public getView<T extends RegionOf<T>>(region: T|undefined|null, callback?: (view:RegionView<T>)=>void): RegionView<T>|undefined{
@@ -93,11 +98,6 @@ export default class RegionController {
     return view
   }
 
-
-
-  //// SELECTION ////
-
-  /** The region selection manager */
   readonly selection= new SelectionManager<RegionOf<any>>()
 
   private initSelection(){
@@ -105,735 +105,804 @@ export default class RegionController {
       this.getView( previous, it=>it.isSelected=false )
       this.getView( selected, it=>it.isSelected=true )
     })
-
     this.selection.onSecondaryAdd.add(region=>{
       this.getView( region, it=>it.isSubSelected=true )
     })
-
     this.selection.onSecondaryRemove.add(region=>{
       this.getView( region, it=>it.isSubSelected=false )
     })
   }
 
-
-
   get tracks(){ return this._app.tracksController.tracks }
 
-  /**
-   * Adds a region to the track and the corresponding view in the waveform.
-   * @param track - The track where to add the region.
-   * @param region - The region to add.
-   * @param waveform - The waveform where to add the region. If not given, the waveform will be search using the ID of the track.
-   */
   public addRegion<T extends RegionOf<T>>(track: Track, region: RegionOf<T>, waveform?: WaveformView): RegionView<T>{
     if(track.regions.indexOf(region)>=0)crashOnDebug("Try to add a region already in the track")
-
     if(region.id===-1)region.id=this.getNewId()
     const factory=RegionController.regionViewFactories[region.regionType]!
-
-    if(!factory){
-      crashOnDebug("No factory for region type "+region.regionType)
-      // TODO Try to add fallback if there is no region view, like a simple red cross invalid region view.
-    }
-
-    // Add to the track
+    if(!factory){ crashOnDebug("No factory for region type "+region.regionType) }
     track.addRegion(region)
     track.modified=true
-
-    // Create the view
     let regionView= factory(this._editorView,region)
     this.bindRegionEvents(region, regionView)
     regionView.initializeRegionView(track.color, region)
-
     waveform ??= this._editorView.getWaveFormViewById(track.id)!
     waveform.addChild(regionView)
     waveform.regionViews.push(regionView)
-
     return regionView
   }
 
-  /**
-   * Merge a region with another region, refreshing the view only on the changed range.
-   * @param track 
-   * @param region 
-   * @param extension 
-   */
   public mergeRegionWith<T extends RegionOf<T>>(region: T, extension: T){
     region.mergeWith(extension)
     const view= this.getView(region)
     const waveform= this._editorView.getWaveFormViewById(region.trackId)!
     const track= this._app.tracksController.getTrackById(region.trackId)!
-    if(!view){
-      crashOnDebug("Try to merge into a region without view")
-      return
-    }
+    if(!view){ crashOnDebug("Try to merge into a region without view"); return; }
     track.modified=true
-    if(extension.start<region.start){
-      // Impossible to just redraw the changing because all the drawing have to be offseted
-      view.redraw(waveform.color, region)
-    }
+    if(extension.start<region.start){ view.redraw(waveform.color, region); }
     else{
-      // Redraw only the changing part
       const redrawStart= extension.start-region.start
       const redrawEnd= extension.end-region.start
       view.draw(waveform.color, region, redrawStart, redrawEnd)
     }
   }
 
-  /**
-   * Move a region to a track by removing it from the previous track and adding it to the new track.
-   * @param region The region to move
-   * @param newTrack The track where to move the region
-   * @param newX An optional new position for the region
-   * @returns 
-   */
   public moveRegion(region: RegionOf<any>, newTrack: Track, newX?: number){
-    // Move the region along its track
     if(newX!==undefined){
       region.start=newX * RATIO_MILLS_BY_PX
       const view=this._editorView.getWaveFormViewById(newTrack.id)!.getRegionViewById(region.id)
       if(view)view.position.x = newX;
-
-      if(region.trackId===newTrack.id){
-        newTrack.modified=true
-      }
+      if(region.trackId===newTrack.id){ newTrack.modified=true }
     }
-
-    // Move the region from the old track to the new track
     if(region.trackId!==newTrack.id){
-      // Keep selection
       const selected = this.selection.isSelected(region)
-
-      // Remove the region view in the old track
       this.removeRegion(region);
-
-      // Create a new region view of the same region in the new track
       const newview=this.addRegion(newTrack,region)
-
       if(selected)this.selection.add(region)
     }
-
   }
 
-  /**
-   * Get the maximum duration of all the regions in the editor.
-   *
-   * @returns The maximum duration of all the regions in the editor in seconds.
-   */
   public getMaxDurationRegions(): number {
     let maxTime = 0;
     for (let track of this.tracks) {
       for (let region of track.regions) {
-
         let end = region.start/1000 + region.duration/1000;
-        if (end > maxTime) {
-          maxTime = end;
-        }
+        if (end > maxTime) { maxTime = end; }
       }
     }
-
     return maxTime;
   }
 
+  private lastClickTime: number = 0;
 
-  /**
-   * Binds the event of a regionView. Used when a new regionView is created.
-   *
-   * @param region - The data object of the region.
-   * @param regionView - The view representing the region.
-   */
   bindRegionEvents(region: Region, regionView: RegionView<any>): void {
+    regionView.on("pointermove", (e: FederatedPointerEvent) => {
+        if (!this._isResizing && !this.draggedRegionState) {
+            const localPos = regionView.toLocal(e.global);
+            if (localPos.x < this.RESIZE_ZONE) {
+                regionView.cursor = "w-resize";
+            } else if (localPos.x > regionView.width - this.RESIZE_ZONE) {
+                regionView.cursor = "e-resize";
+            } else {
+                regionView.cursor = "default";
+            }
+        }
+    });
+
     regionView.on("pointerdown", (_e) => {
-      this.handlePointerDown(regionView);
+      if (_e.button !== 0) return;
+      
+      const localPos = regionView.toLocal(_e.global);
+      let resizeMode: 'LEFT' | 'RIGHT' | null = null;
+      if (localPos.x < this.RESIZE_ZONE) resizeMode = 'LEFT';
+      else if (localPos.x > regionView.width - this.RESIZE_ZONE) resizeMode = 'RIGHT';
+
+      if (resizeMode) {
+          this._isResizing = true;
+          this._resizeState = {
+              mode: resizeMode,
+              initialX: _e.global.x,
+              region: region as RegionOf<any>,
+              initialStart: region.start,
+              initialDuration: region.duration / 1000 // duration is in seconds usually in model? No, MIDI is ms, Sample is ms?
+              // Wait, region.duration getter depends on impl. 
+              // MIDIRegion.duration returns midi.duration (ms).
+              // SampleRegion.duration returns buffer.duration (ms).
+              // Let's assume ms.
+          };
+          this._resizeState.initialDuration = region.duration;
+          _e.stopPropagation();
+          return;
+      }
+
+      const now = Date.now();
+      const isDoubleClick = (now - this.lastClickTime) < 300; 
+      this.lastClickTime = now;
+      this.handlePointerDown(_e, regionView);
       this._offsetX = _e.data.global.x - regionView.position.x;
-      // select the track that corresponds to the clicked region
       let track = this._app.tracksController.getTrackById(region.trackId);
       if (track) this._app.tracksController.select(track);
+      if (isDoubleClick && region instanceof MIDIRegion) {
+          this._app.pianoRollController.open(region);
+      }
+      _e.stopPropagation(); 
     });
     regionView.on("pointerup", () => this.handlePointerUp());
     regionView.on("pointerupoutside", () => this.handlePointerUp() );
   }
 
+  public updateRegionView(region: RegionOf<any>) {
+    const view = this.getView(region);
+    const waveform = this._editorView.getWaveFormViewById(region.trackId);
+    if (view && waveform) { view.redraw(waveform.color, region); }
+  }
 
-  /**
-   * Binds on initialisation the events related to the playhead : pointerdown, pointerup, pointermove and so on...
-   * @private
-   */
   private bindEvents(): void {
-    registerOnKeyUp( key => {
-      if(key=="Shift") this.snappingDisabled=false
-    });
-
+    registerOnKeyUp( key => { if(key=="Shift") this.snappingDisabled=false });
     registerOnKeyDown(key => {
-      const meta= isKeyPressed("Control","Meta")
-      switch(key){
-        case "Escape":
-          this.selection.set(null)
-          break;
-
-        case "Delete":
-        case "Backspace":
-          this.deleteSelectedRegion(true)
-          break
-
-        case "Shift":
-          this.snappingDisabled=true
-          break
-        
-        case "s":
-          this.splitSelectedRegion()
-          break
-
-        case "m":
-          this.splitSelectedRegion()
-          break
-
-        case "x":
-          if(meta)this.cutSelectedRegion()
-          break
-
-        case "c":
-          if(meta)this.copySelectedRegion()
-          break
-
-        case "v":
-          if(meta)this.pasteRegion(true)
-          break
-
-        case "b":
-          const selected=this._app.tracksController.selectedTrack
-          if(selected){
-            const start=this._app.host.playhead
-            const { DO,DO_,RE,RE_,MI,FA,FA_,SOL,SOL_,LA,LA_,SI, $, i, ii, iii, iiii }=MIDI
-            const midi=MIDI.fromList([
-              MI, null, MI, MI, null, DO, MI+i, null, SOL+ii, null, null, null, SOL-$+i, null, null, null,
-              DO+i, null, null, SOL-$+i, null, null, MI-$, null, null, LA-$, null, SI-$, null, LA_-$, LA-$,
-            ], 200)
-            const region=new MIDIRegion(midi,start)
-            this.addRegion(selected,region)
-          }
-          break
-
-        case "n":{
-          const selected=this._app.tracksController.selectedTrack
-          if(selected){
-            const start=this._app.host.playhead
-            const { DO,DO_,RE,RE_,MI,FA,FA_,SOL,SOL_,LA,LA_,SI, $, i, ii, iii, iiii }=MIDI
-            const midi=MIDI.fromList([DO,MI,DO,MI,DO,MI,DO,MI,DO,MI,DO], 500)
-            const region=new MIDIRegion(midi,start)
-            this.addRegion(selected,region)
-          }
-          break
+        const meta= isKeyPressed("Control","Meta")
+        switch(key){
+            case "Escape": this.selection.set(null); break;
+            case "Delete":
+            case "Backspace": this.deleteSelectedRegion(true); break;
+            case "Shift": this.snappingDisabled=true; break;
+            case "s": this.splitSelectedRegion(); break;
+            case "m": this.mergeSelectedRegion(); break;
+            case "x": if(meta)this.cutSelectedRegion(); break;
+            case "c": if(meta)this.copySelectedRegion(); break;
+            case "v": if(meta)this.pasteRegion(true); break;
+            case "a": if(meta)this.selectAllRegions(); break;
         }
-
-        case "k":{
-          const selected=this._app.tracksController.selectedTrack
-          if(selected){
-            const start=this._app.host.playhead
-            const { DO,DO_,RE,RE_,MI,FA,FA_,SOL,SOL_,LA,LA_,SI, $, i:I, ii:II, iii:III, iiii:IIII }=MIDI
-            const _=null
-            let input= prompt("Write MIDI Notes")?.toUpperCase()?.replace(/ /g,",")
-            input="["+input+"]"
-            console.log(input)
-            const midi=MIDI.fromList(eval(input) as number[]  , 500)
-            const region=new MIDIRegion(midi,start)
-            this.addRegion(selected,region)
-            this._app.host.playhead=region.end
-          }
-          break
-        }
-      }
     });
-    // handle moving a region on the PIXI Canvas.
+
+        this._editorView.viewport.on("pointerdown", (e) => {
+            const originalEvent = e.originalEvent as unknown as MouseEvent;
+            // Ignore clicks in the header area (timeline/playhead)
+            // 20 is a safe margin for the timeline numbers/markers
+            if (e.data.global.y < EditorView.PLAYHEAD_HEIGHT + 20) return;
+
+            if (App.TOOL_MODE === "SELECT") {            this._isSelecting = true;
+            this._selectionStart.copyFrom(e.data.global);
+            if (!originalEvent.ctrlKey && !originalEvent.shiftKey) {
+                this.selection.set(null);
+            }
+        } else if (App.TOOL_MODE === "PEN") {
+            const globalY = e.data.global.y + this._editorView.viewport.top;
+            const waveform = this._editorView.getWaveformAtPos(globalY);
+            if (waveform) {
+                this._targetTrack = this._app.tracksController.getTrackById(waveform.trackId)!;
+                if (this._targetTrack) {
+                    this._isCreating = true;
+                    let globalX = e.data.global.x + this._editorView.viewport.left;
+                    if (this._editorView.snapping && !this.snappingDisabled) {
+                        const cellSize = this._editorView.cellSize;
+                        globalX = Math.round(globalX / cellSize) * cellSize;
+                    }
+                    this._creationStart = Math.max(0, globalX * RATIO_MILLS_BY_PX);
+                    const midi = MIDI.empty(500, 0);
+                    this._newRegion = new MIDIRegion(midi, this._creationStart);
+                    this.addRegion(this._targetTrack, this._newRegion);
+                }
+            }
+        }
+    });
+
     this._editorView.viewport.on("pointermove", (e) => {
-      if (this.draggedRegionState) {
-        this.handlePointerMove(e)
+      if (this._isResizing && this._resizeState) {
+          const dx = e.data.global.x - this._resizeState.initialX;
+          const rawDt = dx * RATIO_MILLS_BY_PX;
+          const view = this.getView(this._resizeState.region);
+
+          if (this._resizeState.mode === 'RIGHT') {
+              let newRawEnd = this._resizeState.initialStart + this._resizeState.initialDuration + rawDt;
+              let newSnappedEndX = newRawEnd / RATIO_MILLS_BY_PX;
+              
+              if (this._editorView.snapping && !this.snappingDisabled) {
+                  const cellSize = this._editorView.cellSize;
+                  newSnappedEndX = Math.round(newSnappedEndX / cellSize) * cellSize;
+              }
+              const newSnappedEnd = newSnappedEndX * RATIO_MILLS_BY_PX;
+              const newDuration = Math.max(10, newSnappedEnd - this._resizeState.initialStart);
+              
+              if (view) view.stretch(newDuration/1000, this._resizeState.initialStart, this._resizeState.initialStart);
+          } else {
+              let newRawStart = this._resizeState.initialStart + rawDt;
+              let newSnappedStartX = newRawStart / RATIO_MILLS_BY_PX;
+              if (this._editorView.snapping && !this.snappingDisabled) {
+                  const cellSize = this._editorView.cellSize;
+                  newSnappedStartX = Math.round(newSnappedStartX / cellSize) * cellSize;
+              }
+              let newSnappedStart = Math.max(0, newSnappedStartX * RATIO_MILLS_BY_PX);
+              
+              const originalEnd = this._resizeState.initialStart + this._resizeState.initialDuration;
+              if (newSnappedStart >= originalEnd - 10) newSnappedStart = originalEnd - 10;
+              
+              const newDuration = originalEnd - newSnappedStart;
+              if (view) view.stretch(newDuration/1000, newSnappedStart, this._resizeState.initialStart);
+          }
+      } 
+      else if (this.draggedRegionState) { this.handlePointerMove(e) } 
+      else if (this._isSelecting) {
+          const currentPos = e.data.global;
+          const localStart = this._editorView.viewport.toLocal(this._selectionStart);
+          const localCurrent = this._editorView.viewport.toLocal(currentPos);
+          const x = Math.min(localStart.x, localCurrent.x);
+          const y = Math.min(localStart.y, localCurrent.y);
+          const w = Math.max(1, Math.abs(localStart.x - localCurrent.x));
+          const h = Math.max(1, Math.abs(localStart.y - localCurrent.y));
+          this._editorView.drawSelectionBox(x, y, w, h);
+          this.updateSelectionFromBox(x, y, w, h);
+      } else if (this._isCreating && this._newRegion && this._targetTrack) {
+          let globalX = e.data.global.x + this._editorView.viewport.left;
+          if (this._editorView.snapping && !this.snappingDisabled) {
+              const cellSize = this._editorView.cellSize;
+              globalX = Math.round(globalX / cellSize) * cellSize;
+          }
+          const currentPosMs = globalX * RATIO_MILLS_BY_PX;
+          let startMs = this._creationStart;
+          let endMs = currentPosMs;
+          if (endMs < startMs) { [startMs, endMs] = [endMs, startMs]; }
+          let duration = Math.max(10, endMs - startMs);
+          this._newRegion.start = startMs;
+          this._newRegion.midi.duration = duration;
+          const view = this.getView(this._newRegion);
+          if (view) { view.redraw(this._targetTrack.color, this._newRegion); }
       }
+    });
+
+    this._editorView.viewport.on("pointerup", (e) => {
+        this.handlePointerUp();
+        if (this._isSelecting) {
+            this._isSelecting = false;
+            this._editorView.clearSelectionBox();
+        }
+        if (this._isCreating) {
+            this._isCreating = false;
+            if (this._newRegion && this._targetTrack) {
+                this.selection.set(this._newRegion);
+                this._targetTrack.update(audioCtx);
+            }
+            this._newRegion = null;
+            this._targetTrack = null;
+        }
+    });
+    
+    this._editorView.viewport.on("pointerupoutside", (e) => {
+        this.handlePointerUp();
+        this._isSelecting = false;
+        this._editorView.clearSelectionBox();
+        this._isCreating = false;
+        this._newRegion = null;
+        this._targetTrack = null;
     });
   }
 
-  /**
-   * Get a new region ID and increment the region ID counter.
-   * @private
-   * @return a new ID.
-   */
-  private getNewId(): number {
-    return this.regionIdCounter++;
-  }
+  private getNewId(): number { return this.regionIdCounter++; }
 
-
-  private _dragged_initial_state=undefined
-
-  /**
-   * Selects the region when the user click on the view.
-   *
-   * @param regionView - The clicked region view
-   * @private
-   */
-  private handlePointerDown(regionView: RegionView<any>): void {
-    this.viewportAnimationLoopId = requestAnimationFrame(
-      this.viewportAnimationLoop.bind(this)
-    );
+  private handlePointerDown(e: FederatedPointerEvent, regionView: RegionView<any>): void {
+    this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
     const region = this._app.tracksController.getTrackById(regionView.trackId)?.getRegionById(regionView.id) as RegionOf<any>
-    if(region){
-      if(isKeyPressed("Control","Meta")) this.selection.toggle(region,true)
-      else this.selection.set(region)
-    }
+    let regionToDeselect: RegionOf<any> | null = null;
 
+    if(region){
+      if(isKeyPressed("Control","Meta")) {
+          if (this.selection.isSelected(region)) {
+              regionToDeselect = region;
+          } else {
+              this.selection.toggle(region, true);
+          }
+      }
+      else {
+          if (!this.selection.isSelected(region)) this.selection.set(region);
+          else this.selection.add(region);
+      }
+    }
     const toMove= this.selection.primary
     const view= this.getView(this.selection.primary)
     if (view && toMove) {
+      this.selectedRegionEndOutsideViewport = view.position.x + view.width > this._editorView.viewport.right
+      this.selectedRegionStartOutsideViewport = view.position.x < this._editorView.viewport.left;
       
-      // useful for avoiding scrolling with large regions
-      this.selectedRegionEndOutsideViewport =
-        view.position.x + view.width > this._editorView.viewport.right
+      const draggingRegions = [];
+      for (const r of this.selection.selecteds) {
+          draggingRegions.push({
+              region: r,
+              initialPos: r.pos,
+              initialTrackId: r.trackId,
+              offsetMs: r.start - toMove.start
+          });
+      }
+      
+      this.draggedRegionState = {
+          anchorRegion: toMove, 
+          initialAnchorPos: toMove.pos,
+          initialGlobalX: e.global.x,
+          hasMoved: false,
+          regionToDeselect: regionToDeselect,
+          draggingRegions: draggingRegions
+      };
 
-      this.selectedRegionStartOutsideViewport =
-        view.position.x < this._editorView.viewport.left;
+      // Create Ghosts
+      this._dragGhosts = [];
+      for (const item of draggingRegions) {
+          const track = this._app.tracksController.getTrackById(item.initialTrackId);
+          const waveform = this._editorView.getWaveFormViewById(item.initialTrackId);
+          const regionView = this.getView(item.region);
+          
+          if (track && waveform && regionView) {
+              const ghost = new Graphics();
+              let color = 0xFF0000;
+              if (track.color) {
+                  color = parseInt(track.color.replace("#", ""), 16);
+              }
+              const fillColor = lightenColor(color, 0.5);
 
-      // Useful for undo/redo
-      this.draggedRegionState = {region:toMove, initialPos: toMove.pos, initialTrackId: toMove.trackId};
+              ghost.beginFill(fillColor, 0.5);
+              ghost.lineStyle(1, 0xFFFFFF);
+              ghost.drawRect(0, 0, regionView.width, regionView.height); // Use view dimensions
+              ghost.endFill();
+              
+              ghost.position.set(item.initialPos, 0); // Local to waveform
+              ghost.visible = false;
+              
+              waveform.addChild(ghost);
+              this._dragGhosts.push(ghost);
+          }
+      }
     }
   }
 
-
   public removeRegion(region: RegionOf<any>, undoable=false){
     const track=this._app.tracksController.getTrackById(region.trackId)!
-    console.assert(track !== undefined)
     const waveform=this._editorView.getWaveFormViewById(track.id)!
-    console.assert(waveform !== undefined)
-
     this.doIt(undoable,
       ()=>{
         track.removeRegionById(region.id)
         region.trackId=-1
         track.modified=true
         const view=waveform.getRegionViewById(region.id)!
-        console.assert(view !== undefined)
         waveform.removeRegionView(view)
         this.selection.remove(region)
       },
-      ()=>{
-        this.addRegion(track,region)
-      }
+      ()=>{ this.addRegion(track,region) }
     )
   }
 
-
-  /**
-   * Deletes the current selected region and the corresponding view.
-   * @private
-   */
-  private deleteSelectedRegion(undoable:boolean): void {
+  public deleteSelectedRegion(undoable:boolean): void {
     if ( this.draggedRegionState )return;
     const toRemove= this.selection.selecteds.map(it=>({region:it, track:it.trackId}))
     this.doIt(undoable,
-      ()=>{
-        toRemove.forEach(it=>this.removeRegion(it.region))
-      },
-      ()=>{
-        toRemove.forEach(it=>this.addRegion(this._app.tracksController.getTrackById(it.track)!,it.region))
-      }
+      ()=>{ toRemove.forEach(it=>this.removeRegion(it.region)) },
+      ()=>{ toRemove.forEach(it=>this.addRegion(this._app.tracksController.getTrackById(it.track)!,it.region)) }
     )
   }
 
-  /**
-   * Save a region in the clipboard, the region have to be on a track
-   * @param region the saved region
-   */
+  public selectAllRegions() {
+    this.selection.set(null);
+    for (const track of this.tracks) {
+        for (const region of track.regions) {
+            this.selection.add(region as RegionOf<any>);
+        }
+    }
+  }
+
   public copyRegion(region: RegionOf<any>, undoable=false){
     const oldClipboard=this.regionClipboard
-
-    if(region.trackId==-1)return
     const track=this._app.tracksController.getTrackById(region.trackId)
-    console.assert(track!=undefined)
-
+    if(!track) return;
     this.doIt(undoable,
-      ()=>{
-        this.regionClipboard={region: region.clone(), track: track!}
-      },
-      ()=>{
-        this.regionClipboard=oldClipboard
-      }
+      ()=>{ this.regionClipboard={region: region.clone(), track: track!} },
+      ()=>{ this.regionClipboard=oldClipboard }
     )
-
   }
 
   public cutRegion(region: RegionOf<any>, undoable=false){
     const oldClipboard=this.regionClipboard
     const track=this._app.tracksController.getTrackById(region.trackId)!
-
     this.doIt(undoable,
-      ()=>{
-        this.copyRegion(region,false)
-        this.removeRegion(region)
-      },
-      ()=>{
-        this.regionClipboard=oldClipboard
-        this.addRegion(track,region)
-      }
+      ()=>{ this.copyRegion(region,false); this.removeRegion(region) },
+      ()=>{ this.regionClipboard=oldClipboard; this.addRegion(track,region) }
     )
   }
 
-  private cutSelectedRegion() {
-    if (this.selection.primary) this.cutRegion(this.selection.primary, true);
-  }
+  public cutSelectedRegion() { if (this.selection.primary) this.cutRegion(this.selection.primary, true); }
+  public copySelectedRegion() { if (this.selection.primary) this.copyRegion(this.selection.primary, true); }
 
-  private copySelectedRegion() {
-    if (this.selection.primary) this.copyRegion(this.selection.primary, true);
-  }
-
-  private pasteRegion(undoable: boolean=false) {
+  public pasteRegion(undoable: boolean=false) {
     if (!this.regionClipboard) return;
-
     const {region}=this.regionClipboard
-
-    // Try to get the selected track as pasting destination
     let track = this._app.tracksController.selectedTrack
-    if(track?.deleted)track=null
-    // If no track is selected, try to paste in the track from which the region has been copied
-    if (!track) track = this.regionClipboard.track
-    if(track.deleted)track=null
-    // Else, the is nothing we can do
+    if(!track) track = this.regionClipboard.track
     if(!track)return
-
-    // Paste destination in milliseconds and pixel
     const startinPx = this._app.editorView.playhead.position.x
     const startInMs = this._app.host.playhead;
-
-    // Check if pasted region will be outside the world. If so, do nothing.
     if(startinPx + this.regionClipboard.region.width > this._editorView.worldWidth)return
-
     const newRegion=this.regionClipboard.region.clone() as RegionOf<any>
     newRegion.start=startInMs
-
     this.doIt(undoable,
-      ()=>{
-        this.addRegion(track!,newRegion)
-        this.selection.set(newRegion)
-
-        // move playhead at the end of the newly pasted region
-        this._app.host.playhead=newRegion.end
-      },
-      ()=>{
-        this.removeRegion(newRegion)
-      }
+      ()=>{ this.addRegion(track!,newRegion); this.selection.set(newRegion); this._app.host.playhead=newRegion.end },
+      ()=>{ this.removeRegion(newRegion) }
     )
   }
 
-  /**
-   *
-   * @returns Splits a region at playhead position, creating two new regions
-   * the second is selected and the playhead does not move.
-   */
-  splitSelectedRegion() {
+  public splitSelectedRegion() {
     if (!this.selection.primary) return
     if (!this.isPlayheadOnSelectedRegion()) return
-
     let originalRegion = this.selection.primary
-
-    // Get the split position relative to the region start
     const splitPosition = this._app.editorView.playhead.position.x - originalRegion.pos
-
-    // Get the split position in milliseconds
     const splitTime = splitPosition * RATIO_MILLS_BY_PX;
-
-    // Split into two new regions
     let [firstRegion, secondRegion] = originalRegion.split(splitTime);
-
     let trackId = originalRegion.trackId
     let track = this._app.tracksController.getTrackById(trackId)!
-
-    // Replace the original region by the two new regions
-    const firstRegionView= this.addRegion(track,firstRegion)
-    const secondRegionView= this.addRegion(track,secondRegion)
+    this.addRegion(track,firstRegion as RegionOf<any>)
+    this.addRegion(track,secondRegion as RegionOf<any>)
     this.removeRegion(originalRegion)
-    this.selection.set(secondRegion);
-
+    this.selection.set(secondRegion as RegionOf<any>);
     this._app.undoManager.add({
-      undo: ()=> {
-        this.removeRegion(firstRegion)
-        this.removeRegion(secondRegion)
-        this.addRegion(track,originalRegion)
-      },
-      redo: ()=> {
-        this.removeRegion(originalRegion)
-        this.addRegion(track,firstRegion)
-        this.addRegion(track,secondRegion)
-      }
+      undo: ()=> { this.removeRegion(firstRegion as RegionOf<any>); this.removeRegion(secondRegion as RegionOf<any>); this.addRegion(track,originalRegion) },
+      redo: ()=> { this.removeRegion(originalRegion); this.addRegion(track,firstRegion as RegionOf<any>); this.addRegion(track,secondRegion as RegionOf<any>) }
     })
-    
   }
 
-  /**
-   *
-   * @returns Merge the selected region with the previous one if it exists, otherwise do nothing.
-   * 
-   */
-  mergeSelectedRegion() {
+  public mergeSelectedRegion() {
     if (!this.selection.primary || this.selection.secondaryCount<=0) return;
-
     let mainRegion= this.selection.primary;
     let otherRegions= [...this.selection.secondaries]
     let track= this._app.tracksController.getTrackById(mainRegion.trackId)!
-
-    // Merge the regions into a new region
     const newRegion= mainRegion.clone()
     otherRegions.forEach(it=>newRegion.mergeWith(it))
-
     this.doIt(true,
       ()=>{
         this.addRegion(track,newRegion)
         if(this.selection.primary===mainRegion)this.selection.set(newRegion)
-
         this.removeRegion(mainRegion)
         otherRegions.forEach(it=>this.removeRegion(it))
       },
       ()=>{
         const isSelected= this.selection.primary===newRegion
         if(isSelected) this.selection.set(null)
-        otherRegions.forEach(it=>{
-          this.addRegion(track,it)
-          if(isSelected) this.selection.add(it)
-        })
+        otherRegions.forEach(it=>{ this.addRegion(track,it); if(isSelected) this.selection.add(it) })
         this.addRegion(track,mainRegion)
         if(isSelected)this.selection.add(mainRegion)
         this.removeRegion(newRegion)
       }
     )
-
   }
 
   isPlayheadOnSelectedRegion() {
     if (!this.selection.primary) return;
-
-    // check if playhead is on the selected region
     const view = this.getView(this.selection.primary)
     const playHeadPosX = this._app.editorView.playhead.position.x
     const selectedRegionPosX = view.position.x
     const selectedRegionWidth = this.selection.primary.width
-
-    return (
-      playHeadPosX >= selectedRegionPosX &&
-      playHeadPosX <= selectedRegionPosX + selectedRegionWidth
-    );
+    return ( playHeadPosX >= selectedRegionPosX && playHeadPosX <= selectedRegionPosX + selectedRegionWidth );
   }
-  /**
-   * Move the region in the current waveform. If the users move out of the current waveform, it will also
-   * change the region to the new waveform.
-   *
-   * @param e - Pixi event that handle the events details.
-   * @private
-   */
-  private handlePointerMove(e: FederatedPointerEvent): void {
-    if (!this.selection.primary || !this._offsetX) return;
 
-    // compute delta since last move. If delta is 0, do nothing
+  private handlePointerMove(e: FederatedPointerEvent): void {
+    if (!this.draggedRegionState || !this._offsetX) return;
+
+    // Check threshold
+    if (!this.draggedRegionState.hasMoved) {
+        const dist = Math.abs(e.global.x - this.draggedRegionState.initialGlobalX);
+        if (dist < 5) return;
+        this.draggedRegionState.hasMoved = true;
+    }
+
+    // Update Ghosts
+    const isCopy = isKeyPressed("Control", "Meta");
+    for (const ghost of this._dragGhosts) {
+        ghost.visible = isCopy;
+    }
+
+    const anchor = this.draggedRegionState.anchorRegion;
     const delta = e.data.global.x - this.previousMouseXPos;
     this.previousMouseXPos = e.data.global.x;
     if (delta === 0) return;
-
+    
     let x = e.data.global.x;
     let y = e.data.global.y + this._editorView.viewport.top;
-
+    
+    // Calculate new X for Anchor
     let newX = x - this._offsetX;
     newX = Math.max(0, Math.min(newX, this._editorView.worldWidth));
-
-    // If reaching end of world, do nothing
-    const view = this.getView(this.selection.primary)
-    const regionEndPos = newX + view.width;
-
-    if (regionEndPos >= this._editorView.worldWidth || newX <= 0) {
-      return;
-    }
-
-    // check if snapping is needed
-    if (
-      this._editorView.snapping &&
-      !this.snappingDisabled &&
-      !this.scrollingLeft &&
-      !this.scrollingRight
-    ) {
-      // snapping, using cell-size
+    
+    // Snapping for Anchor
+    if ( this._editorView.snapping && !this.snappingDisabled && !this.scrollingLeft && !this.scrollingRight ) {
       const cellSize = this._editorView.cellSize;
       newX = Math.round(newX / cellSize) * cellSize;
     }
-
+    
+    // Calculate new Track for Anchor
+    const view = this.getView(anchor);
+    if (!view) return;
     let parentWaveform = view.parent as WaveformView;
     let parentTop = parentWaveform.y;
     let parentBottom = parentTop + parentWaveform.height;
-
-    // Check if the region is moved out of its current track
-    let targetTrackId= this.selection.primary.trackId
-    if(y>parentBottom && !this._app.waveformController.isLast(parentWaveform)){
+    let targetTrackId = anchor.trackId;
+    
+    if(y > parentBottom && !this._app.waveformController.isLast(parentWaveform)){
       targetTrackId = this._app.waveformController.getNextWaveform(parentWaveform)?.trackId ?? targetTrackId
     }
-    else if(y<parentTop && !this._app.waveformController.isFirst(parentWaveform)){
+    else if(y < parentTop && !this._app.waveformController.isFirst(parentWaveform)){
       targetTrackId = this._app.waveformController.getPreviousWaveform(parentWaveform)?.trackId ?? targetTrackId
     }
+    
+    // Apply changes to ALL regions
+    const tracks = this.tracks;
+    const anchorInfo = this.draggedRegionState.draggingRegions.find(r => r.region === anchor);
+    if (!anchorInfo) return;
+    
+    const currentAnchorTrackIndex = tracks.findIndex(t => t.id === anchorInfo.initialTrackId); 
+    const newAnchorTrackIndex = tracks.findIndex(t => t.id === targetTrackId);
+    const trackIndexDelta = newAnchorTrackIndex - currentAnchorTrackIndex;
+    
+    // Calculate Anchor Start MS
+    const anchorNewStartMs = newX * RATIO_MILLS_BY_PX;
 
-    // Move the region
-    const newTrack=this._app.tracksController.getTrackById(targetTrackId)!
-    this.moveRegion(this.selection.primary, newTrack, newX)
+    for (const item of this.draggedRegionState.draggingRegions) {
+        // Calculate New Track
+        const itemInitialTrackIndex = tracks.findIndex(t => t.id === item.initialTrackId);
+        let itemNewTrackIndex = itemInitialTrackIndex + trackIndexDelta;
+        itemNewTrackIndex = Math.max(0, Math.min(tracks.length - 1, itemNewTrackIndex));
+        const itemNewTrack = tracks.get(itemNewTrackIndex);
+        
+        // Calculate New Position
+        const itemNewStartMs = Math.max(0, anchorNewStartMs + item.offsetMs);
+        const itemNewX = itemNewStartMs / RATIO_MILLS_BY_PX;
+        
+        this.moveRegion(item.region, itemNewTrack, itemNewX);
+    }
 
     this.checkIfScrollingNeeded(e.data.global.x);
   }
 
-  /**
-   * Check if scrolling is needed when moving a region.
-   * @private
-   */
   checkIfScrollingNeeded(mousePosX: number) {
     if (!this.selection.primary || !this._offsetX) return
-
     const view= this.getView(this.selection.primary)
-
-    // scroll viewport if the right end of the moving  region is close
-    // to the right or left edge of the viewport, or left edge of the region close to left edge of viewxport
-    // (and not 0 or end of viewport)
-    // scroll smoothly the viewport if the region is dragged to the right or left
-    // when a region is dragged to the right or to the left, we start scrolling
-    // when the right end of the region is close to the right edge of the viewport or
-    // when the left end of the region is close to the left edge of the viewport
-    // "close" means at a distance of SCROLL_TRIGGER_ZONE_WIDTH pixels from the edge
-
-    // scroll parameters
     const SCROLL_TRIGGER_ZONE_WIDTH = 50;
     const MIN_SCROLL_SPEED = 1;
     const MAX_SCROLL_SPEED = 10;
-
     const regionEndPos = this.selection.primary.pos + view.width;
-
     const regionStartPos = this.selection.primary.pos;
     let viewport = this._editorView.viewport;
     const viewportWidth = viewport.right - viewport.left;
-
     const distanceToRightEdge = viewportWidth - (regionEndPos - viewport.left);
-
-    this.scrollingRight =
-      mousePosX >= viewportWidth - SCROLL_TRIGGER_ZONE_WIDTH;
-
+    this.scrollingRight = mousePosX >= viewportWidth - SCROLL_TRIGGER_ZONE_WIDTH;
     if (this.scrollingRight && regionEndPos <= this._editorView.worldWidth) {
-      // when scrolling right, distanceToRightEdge will be considered when in [50, -50] and will map to scroll speed
-      // to the right between 1 and 10
-      this.incrementScrollSpeed = this.map(
-        distanceToRightEdge,
-        SCROLL_TRIGGER_ZONE_WIDTH,
-        -SCROLL_TRIGGER_ZONE_WIDTH,
-        MIN_SCROLL_SPEED,
-        MAX_SCROLL_SPEED
-      );
+      this.incrementScrollSpeed = this.map( distanceToRightEdge, SCROLL_TRIGGER_ZONE_WIDTH, -SCROLL_TRIGGER_ZONE_WIDTH, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED );
     }
-
     const distanceToLeftEdge = viewport.left - regionStartPos;
-
-    /*this.scrollingLeft =
-      !this.selectedRegionStartOutsideViewport &&
-      regionStartPos < viewport.left + SCROLL_TRIGGER_ZONE_WIDTH &&
-      viewport.left > 0;
-      */
-
-    this.scrollingLeft =
-      mousePosX <= SCROLL_TRIGGER_ZONE_WIDTH && regionStartPos > 0;
-
+    this.scrollingLeft = mousePosX <= SCROLL_TRIGGER_ZONE_WIDTH && regionStartPos > 0;
     if (this.scrollingLeft) {
-      // when scrolling right, distanceToRightEdge will be considered when in [50, -50] and will map to scroll speed
-      // to the right between 1 and 10
-      // MB : need to adjust the mapping function here !
-      this.incrementScrollSpeed = this.map(
-        distanceToLeftEdge,
-        -SCROLL_TRIGGER_ZONE_WIDTH,
-        SCROLL_TRIGGER_ZONE_WIDTH,
-        MIN_SCROLL_SPEED,
-        MAX_SCROLL_SPEED
-      );
+      this.incrementScrollSpeed = this.map( distanceToLeftEdge, -SCROLL_TRIGGER_ZONE_WIDTH, SCROLL_TRIGGER_ZONE_WIDTH, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED );
     }
   }
 
-  // maps a value from [istart, istop] into [ostart, ostop]
-  map(
-    value: number,
-    istart: number,
-    istop: number,
-    ostart: number,
-    ostop: number
-  ) {
-    return ostart + (ostop - ostart) * ((value - istart) / (istop - istart));
-  }
+  map(value: number, istart: number, istop: number, ostart: number, ostop: number) { return ostart + (ostop - ostart) * ((value - istart) / (istop - istart)); }
 
   viewportAnimationLoop() {
-    if (!this.selection.primary || !this._offsetX) return
-
-    const view= this.getView(this.selection.primary)
-
+    if (!this.draggedRegionState || !this._offsetX) return
+    const anchor = this.draggedRegionState.anchorRegion;
+    const view = this.getView(anchor);
+    if (!view) return;
+    
     let viewScrollSpeed = 0;
-    if (this.scrollingRight) {
-      viewScrollSpeed = this.incrementScrollSpeed;
-      this._offsetX -= viewScrollSpeed;
-    } else if (this.scrollingLeft) {
-      viewScrollSpeed = -this.incrementScrollSpeed;
-      this._offsetX -= viewScrollSpeed;
-    }
-
-    // if needed scroll smoothly the viewport to left or right
+    if (this.scrollingRight) { viewScrollSpeed = this.incrementScrollSpeed; this._offsetX -= viewScrollSpeed; } 
+    else if (this.scrollingLeft) { viewScrollSpeed = -this.incrementScrollSpeed; this._offsetX -= viewScrollSpeed; }
+    
     if (this.scrollingRight || this.scrollingLeft) {
       let viewport = this._editorView.viewport;
-
       viewport.left += viewScrollSpeed;
-      // move also region and region view
-      if (view.position.x + viewScrollSpeed < 0) return;
+      
+      // Update ALL regions
+      for (const item of this.draggedRegionState.draggingRegions) {
+          const rView = this.getView(item.region);
+          if (rView && rView.position.x + viewScrollSpeed >= 0) {
+             item.region.start += viewScrollSpeed * RATIO_MILLS_BY_PX;
+             rView.position.x += viewScrollSpeed;
+          }
+      }
 
-      // adjust region start
-      this.selection.primary.start += viewScrollSpeed * RATIO_MILLS_BY_PX;
-      view.position.x += viewScrollSpeed;;
-
-      // adjust horizontal scrollbar so that it corresponds to the current viewport position
-      // scrollbar pos depends on the left position of the viewport.
       const horizontalScrollbar = this._editorView.horizontalScrollbar;
       horizontalScrollbar.moveTo(viewport.left);
-
-      // if scrolling left and viewport.left < 0, stop scrolling an put viewport.left to 0
-      if (this.scrollingLeft && viewport.left < 0) {
-        viewport.left = 0;
-        this.scrollingLeft = false;
-      }
-      // if scrolling right and viewport.right > worldWidth, stop scrolling and put viewport.right to worldWidth
-      if (this.scrollingRight && viewport.right > this._editorView.worldWidth) {
-        viewport.right = this._editorView.worldWidth;
-        this.scrollingRight = false;
-      }
+      if (this.scrollingLeft && viewport.left < 0) { viewport.left = 0; this.scrollingLeft = false; }
+      if (this.scrollingRight && viewport.right > this._editorView.worldWidth) { viewport.right = this._editorView.worldWidth; this.scrollingRight = false; }
     }
     requestAnimationFrame(this.viewportAnimationLoop.bind(this));
   }
 
-  /**
-   * If the region was moving, it stops the move and update the track buffer. If the region is in a new tracks,
-   * it will modify the old track and the new one.
-   * @private
-   */
   private handlePointerUp(): void {
     cancelAnimationFrame(this.viewportAnimationLoopId);
-    if(!this.draggedRegionState)return
 
+    if (this._isResizing && this._resizeState) {
+        // Commit Resize
+        const { region: originalRegion, initialStart, initialDuration, mode } = this._resizeState;
+        const view = this.getView(originalRegion);
+
+        if (!view) { 
+            this._isResizing = false; 
+            this._resizeState = null; 
+            return; 
+        }
+
+        const newStartMs = view.position.x * RATIO_MILLS_BY_PX;
+        const newDurationMs = view.width * RATIO_MILLS_BY_PX;
+        
+        const track = this._app.tracksController.getTrackById(originalRegion.trackId);
+        if (!track) { 
+             this._isResizing = false; 
+             this._resizeState = null; 
+             return; 
+        }
+
+        let regionToAdd: RegionOf<any> | null = null;
+        let regionToRemove: RegionOf<any> = originalRegion;
+
+        try {
+            if (mode === 'LEFT') {
+                const diff = newStartMs - initialStart;
+                if (diff > 0) { // Shrink from left
+                    if (diff < originalRegion.duration) {
+                        const [, right] = originalRegion.split(diff);
+                        regionToAdd = right as RegionOf<any>;
+                    }
+                } else if (diff < 0) { // Extend to left
+                    const gapDuration = -diff;
+                    const gapRegion = originalRegion.emptyAlike(newStartMs, gapDuration);
+                    gapRegion.mergeWith(originalRegion as any);
+                    regionToAdd = gapRegion as RegionOf<any>;
+                }
+            } else { // RIGHT
+                const diff = newDurationMs - initialDuration;
+                if (diff < 0) { // Shrink from right
+                     if (newDurationMs > 0 && newDurationMs < originalRegion.duration) {
+                         const [left] = originalRegion.split(newDurationMs);
+                         regionToAdd = left as RegionOf<any>;
+                     }
+                } else if (diff > 0) { // Extend to right
+                    const oldEnd = initialStart + initialDuration;
+                    const gapDuration = diff;
+                    const gapRegion = originalRegion.emptyAlike(oldEnd, gapDuration);
+                    const base = originalRegion.clone();
+                    base.mergeWith(gapRegion as any);
+                    regionToAdd = base as RegionOf<any>;
+                }
+            }
+        } catch(e) {
+            console.error("Resize operation failed", e);
+        }
+
+        if (regionToAdd && regionToAdd !== originalRegion) {
+             this.doIt(true,
+                 () => {
+                     this.removeRegion(regionToRemove);
+                     this.addRegion(track, regionToAdd!);
+                     this.selection.set(regionToAdd!);
+                 },
+                 () => {
+                     this.removeRegion(regionToAdd!);
+                     this.addRegion(track, regionToRemove);
+                     this.selection.set(regionToRemove);
+                 }
+             );
+        } else {
+            this.updateRegionView(originalRegion);
+        }
+
+        this._isResizing = false;
+        this._resizeState = null;
+        return;
+    }
+
+    if(!this.draggedRegionState)return
+    
+    if (!this.draggedRegionState.hasMoved) {
+        for (const ghost of this._dragGhosts) {
+            ghost.destroy();
+        }
+        this._dragGhosts = [];
+        
+        if (this.draggedRegionState.regionToDeselect) {
+            this.selection.toggle(this.draggedRegionState.regionToDeselect, true);
+        }
+
+        this.draggedRegionState = undefined;
+        return;
+    }
 
     this.scrollingLeft = false;
     this.scrollingRight = false;
 
-    let oldTrack = this._app.tracksController.getTrackById(this.draggedRegionState!.initialTrackId)!
-    let newTrack = this._app.tracksController.getTrackById(this.draggedRegionState.region!.trackId)!
-
-    const oldX = this.draggedRegionState.initialPos
-    const newX = this.draggedRegionState.region.pos
-    const region = this.draggedRegionState.region
-
-    if(oldTrack.id!=newTrack.id || oldX!=newX){
-      this.doIt(true,
-        ()=> this.moveRegion(region, newTrack, newX),
-        ()=> this.moveRegion(region, oldTrack, oldX),
-      )
+    // Destroy Ghosts
+    for (const ghost of this._dragGhosts) {
+        ghost.destroy();
     }
+    this._dragGhosts = [];
+    
+    const isCopy = isKeyPressed("Control", "Meta");
 
+    if (isCopy) {
+        const copies: { region: RegionOf<any>, track: Track }[] = [];
+        const originalsToRestore: { region: RegionOf<any>, track: Track, pos: number }[] = [];
+
+        for (const item of this.draggedRegionState.draggingRegions) {
+            const currentTrack = this._app.tracksController.getTrackById(item.region.trackId)!;
+            
+            // 1. Clone the region in its current (dropped) state
+            const newRegion = item.region.clone();
+            // ID must be unique
+            newRegion.id = this.getNewId();
+            
+            copies.push({ region: newRegion, track: currentTrack });
+
+            // 2. Prepare to restore original
+            const originalTrack = this._app.tracksController.getTrackById(item.initialTrackId)!;
+            originalsToRestore.push({ region: item.region, track: originalTrack, pos: item.initialPos });
+        }
+
+        // Restore originals immediately (cancel the move)
+        originalsToRestore.forEach(op => this.moveRegion(op.region, op.track, op.pos));
+
+        // Add copies
+        this.doIt(true,
+            () => {
+                copies.forEach(op => {
+                    this.addRegion(op.track, op.region);
+                    this.selection.add(op.region);
+                });
+            },
+            () => {
+                copies.forEach(op => {
+                    this.removeRegion(op.region);
+                });
+            }
+        );
+        
+        // Select the new copies
+        this.selection.set(null);
+        copies.forEach(op => this.selection.add(op.region));
+
+    } else {
+        const moves: {region: RegionOf<any>, oldTrack: Track, oldX: number, newTrack: Track, newX: number}[] = [];
+        
+        for (const item of this.draggedRegionState.draggingRegions) {
+            const oldTrack = this._app.tracksController.getTrackById(item.initialTrackId)!;
+            const oldX = item.initialPos;
+            const newTrack = this._app.tracksController.getTrackById(item.region.trackId)!;
+            const newX = item.region.pos;
+            
+            if (oldTrack.id !== newTrack.id || Math.abs(oldX - newX) > 0.1) {
+                moves.push({ region: item.region, oldTrack, oldX, newTrack, newX });
+            }
+        }
+        
+        if (moves.length > 0) {
+            this.doIt(true, 
+                () => moves.forEach(m => this.moveRegion(m.region, m.newTrack, m.newX)),
+                () => moves.forEach(m => this.moveRegion(m.region, m.oldTrack, m.oldX))
+            );
+        }
+    }
+    
     this.draggedRegionState = undefined;
+  }
+
+  private updateSelectionFromBox(x: number, y: number, w: number, h: number) {
+      this.tracks.forEach(track => {
+          const waveform = this._editorView.getWaveFormViewById(track.id);
+          if (!waveform) return;
+          const waveY = waveform.y; 
+          const waveH = waveform.height;
+          if (y < waveY + waveH && y + h > waveY) {
+              track.regions.forEach(region => {
+                  const view = waveform.getRegionViewById(region.id);
+                  if (view) {
+                      const rX = view.x; 
+                      const rW = view.width;
+                      if (x < rX + rW && x + w > rX) { this.selection.add(region as RegionOf<any>); }
+                  }
+              });
+          }
+      });
   }
 
 }

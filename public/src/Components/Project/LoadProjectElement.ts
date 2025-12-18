@@ -132,6 +132,8 @@ button {
 export default class LoadProjectElement extends HTMLElement {
     initialized: Boolean;
     selectedProject: string;
+    selectedUsername: string = "";
+    selectedProjectName: string = "";
     selectedResult: HTMLDivElement;
 
     constructor() {
@@ -167,6 +169,8 @@ export default class LoadProjectElement extends HTMLElement {
             resultElement.addEventListener("click", () => {
                 this.selectedResult?.classList.remove("selected");
                 this.selectedProject = result.id;
+                this.selectedUsername = result.username;
+                this.selectedProjectName = result.name;
                 this.selectedResult = resultElement;
                 resultElement.classList.add("selected");
                 this.projectName!.innerText = result.name;

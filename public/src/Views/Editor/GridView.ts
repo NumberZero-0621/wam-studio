@@ -93,24 +93,35 @@ export default class GridView extends Container {
     // number of bars
     let nbBars = Math.floor(width / barWidth);
     // draw bars
-    const lineColor = "#545252"
+    const lineColor = "#888888" // Made darker/more visible
+    
+    const snapWidth = this._editorView.cellSize; // This gets the calculated snap size from EditorView
+
     for (
       let currentBarNumberXpos = 0;
       currentBarNumberXpos < nbBars;
       currentBarNumberXpos++
     ) {
       if (displaySteps) {
-        // draw vertical lines for steps, less visible
-        this.grid.lineStyle(0.5, lineColor, 0.1);
+        // draw vertical lines for steps (beats)
+        // Made more visible (alpha 0.1 -> 0.3, thickness 0.5 -> 1)
+        this.grid.lineStyle(1, lineColor, 0.3);
         for (let y = 0; y < nbSteps; y++) {
-          this.grid.beginFill(lineColor, 0.5);
-          // Grid should be as high as the canvas
-          this.grid.drawRect(
-            currentBarNumberXpos * barWidth + y * stepWidth,
-            17,
-            1,
-            height
-          );
+          const stepX = currentBarNumberXpos * barWidth + y * stepWidth;
+          
+          // Draw Beat Line
+          this.grid.beginFill(lineColor, 0.4);
+          this.grid.drawRect(stepX, 17, 1, height);
+
+          // Draw Snap Lines (subdivisions)
+          if (snapWidth >= 5 && snapWidth < stepWidth * 0.99) { // Avoid drawing if snap ~= step or larger
+               const numSub = Math.round(stepWidth / snapWidth);
+               for (let s = 1; s < numSub; s++) {
+                   const subX = stepX + s * snapWidth;
+                   this.grid.beginFill(lineColor, 0.15); // Fainter
+                   this.grid.drawRect(subX, 17, 1, height);
+               }
+          }
         }
       }
 
@@ -119,7 +130,7 @@ export default class GridView extends Container {
         // draw bar separator
         this.grid.lineStyle(1, lineColor, 0.5)
         // draw vertical line for bar separator
-        this.grid.beginFill(lineColor, 0.5)
+        this.grid.beginFill(lineColor, 0.8) // Darker bar line
         // Grid should be as high as the canvas
         this.grid.drawRect(currentBarNumberXpos * barWidth, 7, 1, height)
 

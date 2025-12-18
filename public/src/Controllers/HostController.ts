@@ -315,6 +315,35 @@ export default class HostController {
       this.snapOnOff();
     });
 
+    // Tool Button Logic
+    const toggleToolMenu = () => {
+        const display = this._view.toolMenu.style.display;
+        this._view.toolMenu.style.display = display === "none" ? "block" : "none";
+    };
+    this._view.toolBtn.addEventListener("click", toggleToolMenu);
+    this._view.toolBtnArrow.addEventListener("click", toggleToolMenu);
+
+    this._view.toolSelectBtn.addEventListener("click", () => {
+        App.TOOL_MODE = "SELECT";
+        this._view.updateToolIcon("SELECT");
+        this._view.toolMenu.style.display = "none";
+    });
+
+    this._view.toolPenBtn.addEventListener("click", () => {
+        App.TOOL_MODE = "PEN";
+        this._view.updateToolIcon("PEN");
+        this._view.toolMenu.style.display = "none";
+    });
+
+    // Hide tool menu on outside click
+    window.addEventListener("click", (e) => {
+        if (!this._view.toolMenu.contains(e.target as Node) && 
+            !this._view.toolBtn.contains(e.target as Node) && 
+            !this._view.toolBtnArrow.contains(e.target as Node)) {
+            this._view.toolMenu.style.display = "none";
+        }
+    });
+
     this._view.metronomeContainer.hidden=true
     this._view.metronomeArrow?.addEventListener("click",()=>{
       this._view.metronomeContainer.hidden=!this._view.metronomeContainer.hidden
@@ -373,6 +402,7 @@ export default class HostController {
       this._app.editorView.grid.updateTimeSignature(numerator,denominator)
       this._app.hostView.metronome.timeSignature= [numerator,denominator]
       this._app.hostView.metronome.playhead=this._app.host.playhead
+      this._app.pianoRollController.redraw(); // Update Piano Roll Grid
     })
 
     this._view.tempoSelector.on_change.add((newTempo)=>{

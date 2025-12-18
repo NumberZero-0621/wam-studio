@@ -74,8 +74,10 @@ export default class PlayheadController {
       // otherwise, let the click be handled by the grid clicking on a line in the middle of screen
       // would move the playhead...
       //console.log("e.data.global.y = " + e.data.global.y + "PLAYHEAD_HEIGHT = " + EditorView.PLAYHEAD_HEIGHT);
-      if (e.data.global.y < EditorView.PLAYHEAD_HEIGHT + 10)
+      if (e.data.global.y < EditorView.PLAYHEAD_HEIGHT + 10) {
         this.handlePointerDown(e);
+        e.stopPropagation();
+      }
     });
     this._app.editorView.grid.on("pointerup", (e) => {
       // to handle cliks on bar numbers, step lines etc.

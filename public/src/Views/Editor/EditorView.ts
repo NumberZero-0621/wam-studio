@@ -1,5 +1,5 @@
 import { Viewport } from "pixi-viewport";
-import { Application } from "pixi.js";
+import { Application, Graphics } from "pixi.js";
 import ScrollBarElement from "../../Components/ScrollBarElement";
 import { ScrollEvent } from "../../Controllers/Editor/EditorController";
 import {
@@ -7,6 +7,7 @@ import {
     HEIGHT_TRACK,
     MAX_DURATION_SEC,
     RATIO_MILLS_BY_PX,
+    TEMPO
 } from "../../Env";
 import Track from "../../Models/Track/Track";
 import GridView from "./GridView";
@@ -72,6 +73,10 @@ export default class EditorView extends Application {
     public grid: GridView;
     /* follow grid cells "magnetically" when moving a region */
     public snapping: boolean = true;
+    public snapResolution: number = 4;
+    public snapTriplet: boolean = false;
+
+    public selectionBox: Graphics;
 
     public static readonly PLAYHEAD_HEIGHT = 17;
     public static readonly PLAYHEAD_WIDTH = 10;
@@ -118,6 +123,10 @@ export default class EditorView extends Application {
         this.grid = new GridView(this);
         this.grid.eventMode = "dynamic";
 
+        this.selectionBox = new Graphics();
+        this.selectionBox.zIndex = 100; // Above regions
+        this.viewport.addChild(this.selectionBox);
+
 
         this.viewport.sortableChildren = true;
         this.stage.sortableChildren = true;
@@ -127,8 +136,25 @@ export default class EditorView extends Application {
         this.resizeCanvas();
     }
 
+    public drawSelectionBox(x: number, y: number, w: number, h: number) {
+        this.selectionBox.clear();
+        this.selectionBox.beginFill(0xFFFFFF, 0.3);
+        this.selectionBox.lineStyle(1, 0xFFFFFF, 0.8);
+        this.selectionBox.drawRect(x, y, w, h);
+        this.selectionBox.endFill();
+    }
+
+    public clearSelectionBox() {
+        this.selectionBox.clear();
+    }
+
     get cellSize() {
-        return this.grid.cellSize;
+        const beatDuration = 60000 / TEMPO;
+        let snapDuration = (4 / this.snapResolution) * beatDuration;
+        if (this.snapTriplet) {
+            snapDuration = snapDuration * 2 / 3;
+        }
+        return snapDuration / RATIO_MILLS_BY_PX;
     }
     /**
      * Handler for the wheel event on the editor. It will scroll vertically or horizontally depending on the
@@ -326,7 +352,7 @@ export default class EditorView extends Application {
                     //if (!track.audioBuffer) return;
                     let region = track.getRegionById(regionView.id);
                     if (region) {
-                        regionView.stretch(region.duration/1000, region.start);
+                        regionView.stretch(region.duration/1000, region.start, region.start);
                     }
                     regionView.redrawSoon(track.color, region);
                 }

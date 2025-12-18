@@ -77,7 +77,7 @@ export abstract class MIDIView{
      */
     mergeFrom(other: MIDIView): void {
         other.forEachNote((note, start)=>{
-            this.putNote(note, start)
+            this.putNote(new MIDINote(note.note, note.velocity, note.channel, note.duration), start)
         })
     }
 

@@ -97,20 +97,44 @@
 			<div class="time-signature-selector" id="time-signature-selector">
 				<!-- the time-signature web component will be inserted here -->
 			</div>
+            <div id="tool-wrapper" style="position: relative; display: flex; align-items: center; height: 100%;">
+                <div id="tool-btn" class="menu-item" style="height: 100%;">
+                    <span class="mytooltip">Tool Mode</span>
+                    <i class="bi bi-cursor-fill" id="tool-icon" style="font-size: 20px; color: #d3d3d3;"></i>
+                </div>
+                <button id="tool-btn-arrow" class="metro-btn-arrow" style="margin-left: -20px; z-index: 10;">▼</button>
+                <div id="tool-menu" class="dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 150px;">
+                    <a class="dropdown-item" id="tool-select"><i class="bi bi-cursor-fill"></i> Select Mode</a>
+                    <a class="dropdown-item" id="tool-pen"><i class="bi bi-pencil-fill"></i> Pen Mode</a>
+                </div>
+            </div>
 			<div id="metro-btn" class="menu-item">
 				<span class="mytooltip">Metronome</span>
 				<i class="metro-icon"></i>
 			</div>
-			<button id="metro-btn-arrow" class="metro-btn-arrow">▼</button>
+			<button id="metro-btn-arrow" class="metro-btn-arrow" style="margin-left: -20px; z-index: 10;">▼</button>
 			<div id="metronome"></div>
 			<div id="mute-btn" class="menu-item">
 				<span class="mytooltip">Mute</span>
 				<i class="volume-up-icon" style="width: 30px" id="mute-icon"></i>
 			</div>
-			<div id="snap-btn" class="menu-item">
-				<span class="mytooltip">Snap grid</span>
-				<i class="snap-icon" style="width: 30px" id="snap-icon"></i>
-			</div>
+            <div id="snap-wrapper" style="position: relative; display: flex; align-items: center; height: 100%;">
+                <div id="snap-btn" class="menu-item" style="height: 100%;">
+                    <span class="mytooltip">Snap grid</span>
+                    <i class="snap-icon" style="width: 30px" id="snap-icon"></i>
+                </div>
+                <button id="snap-btn-arrow" class="metro-btn-arrow" style="margin-left: -20px; z-index: 10;">▼</button>
+                <div id="snap-menu" class="dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 180px; background-color: #222; border: 1px solid #444;">
+                    <a class="dropdown-item" id="snap-1-1" style="color: #eee; cursor: pointer;">1/1 (Bar)</a>
+                    <a class="dropdown-item" id="snap-1-2" style="color: #eee; cursor: pointer;">1/2 (Half)</a>
+                    <a class="dropdown-item" id="snap-1-4" style="color: #eee; cursor: pointer;">1/4 (Quarter) <span style="float:right">✓</span></a>
+                    <a class="dropdown-item" id="snap-1-8" style="color: #eee; cursor: pointer;">1/8 (Eighth)</a>
+                    <a class="dropdown-item" id="snap-1-16" style="color: #eee; cursor: pointer;">1/16 (Sixteenth)</a>
+                    <a class="dropdown-item" id="snap-1-32" style="color: #eee; cursor: pointer;">1/32 (Thirty-second)</a>
+                    <div class="dropdown-divider" style="border-top: 1px solid #444;"></div>
+                    <a class="dropdown-item" id="snap-triplet" style="color: #eee; cursor: pointer;">Triplet Mode <span id="snap-triplet-check" style="float: right; display: none;">✓</span></a>
+                </div>
+            </div>
 			<div id="split-btn" class="menu-item">
 				<span class="mytooltip">Split region (S)</span>
 				<i class="split-icon" style="width: 30px" id="split-icon"></i>

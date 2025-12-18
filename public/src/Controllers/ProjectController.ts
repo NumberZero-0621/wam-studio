@@ -21,6 +21,9 @@ export default class ProjectController {
      */
     private _logged: boolean = false;
 
+    private currentUsername: string = "";
+    private currentProjectName: string = "";
+
     constructor(app: App) {
         this._app = app;
         this._view = this._app.projectView;
@@ -35,6 +38,12 @@ export default class ProjectController {
     public openSaveWindow(): void {
         this._view.mountSave();
         this.bindSaveEvents();
+        if (this.currentUsername !== "") {
+            this._view.saveElement.user.value = this.currentUsername;
+        }
+        if (this.currentProjectName !== "") {
+            this._view.saveElement.project.value = this.currentProjectName;
+        }
         this._view.show();
 
     }
@@ -226,6 +235,8 @@ export default class ProjectController {
             let response = await fetch(url);
             if (response.status === 200) {
                 let responseData = await response.json();
+                this.currentUsername = this._view.loadElement.selectedUsername;
+                this.currentProjectName = this._view.loadElement.selectedProjectName;
                 await this._app.loader.loadProject(
                     responseData.data??{},
                     id=>{

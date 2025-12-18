@@ -21,6 +21,13 @@ export default class HostView {
     metroBtn = document.getElementById("metro-btn") as HTMLDivElement;
     soundLoopBtn = document.getElementById("soundLoupBtn") as HTMLElement;
 
+    toolBtn = document.getElementById("tool-btn") as HTMLDivElement;
+    toolBtnArrow = document.getElementById("tool-btn-arrow") as HTMLButtonElement;
+    toolMenu = document.getElementById("tool-menu") as HTMLDivElement;
+    toolSelectBtn = document.getElementById("tool-select") as HTMLAnchorElement;
+    toolPenBtn = document.getElementById("tool-pen") as HTMLAnchorElement;
+    toolIcon = document.getElementById("tool-icon") as HTMLElement;
+
     timer = document.getElementById("timer") as HTMLDivElement;
 
     tempoDiv = document.getElementById("tempo-selector") as HTMLDivElement;
@@ -42,6 +49,17 @@ export default class HostView {
     playIcon = document.getElementById("play-icon") as HTMLDivElement;
     muteIcon = document.getElementById("mute-icon") as HTMLDivElement;
     snapIcon = document.getElementById("snap-icon") as HTMLDivElement;
+    snapWrapper = document.getElementById("snap-wrapper") as HTMLDivElement;
+    snapBtnArrow = document.getElementById("snap-btn-arrow") as HTMLButtonElement;
+    snapMenu = document.getElementById("snap-menu") as HTMLDivElement;
+    snap1_1 = document.getElementById("snap-1-1") as HTMLElement;
+    snap1_2 = document.getElementById("snap-1-2") as HTMLElement;
+    snap1_4 = document.getElementById("snap-1-4") as HTMLElement;
+    snap1_8 = document.getElementById("snap-1-8") as HTMLElement;
+    snap1_16 = document.getElementById("snap-1-16") as HTMLElement;
+    snap1_32 = document.getElementById("snap-1-32") as HTMLElement;
+    snapTriplet = document.getElementById("snap-triplet") as HTMLElement;
+    snapTripletCheck = document.getElementById("snap-triplet-check") as HTMLElement;
     undoIcon = document.getElementById("undo-icon") as HTMLDivElement;
     redoIcon = document.getElementById("redo-icon") as HTMLDivElement;
     metronomeIcon = document.getElementById("metro-icon") as HTMLDivElement;
@@ -94,6 +112,14 @@ export default class HostView {
         else{
             this.metroBtn.style.backgroundColor = "";
             tooltip.textContent = "Metronome Off";
+        }
+    }
+
+    public updateToolIcon(mode: "SELECT" | "PEN") {
+        if (mode === "SELECT") {
+            this.toolIcon.className = "bi bi-cursor-fill";
+        } else {
+            this.toolIcon.className = "bi bi-pencil-fill";
         }
     }
         
@@ -202,6 +228,30 @@ export default class HostView {
             this.snapIcon.className = "snap-icon-off";
             tooltip.innerHTML = "Snap Grid On";
         }
+    }
+
+    public updateSnapMenu(denominator: number, triplet: boolean) {
+        // Clear all checks
+        [this.snap1_1, this.snap1_2, this.snap1_4, this.snap1_8, this.snap1_16, this.snap1_32].forEach(el => {
+           const span = el.querySelector('span');
+           if (span) span.remove();
+        });
+
+        // Check active
+        let activeEl;
+        switch(denominator) {
+            case 1: activeEl = this.snap1_1; break;
+            case 2: activeEl = this.snap1_2; break;
+            case 4: activeEl = this.snap1_4; break;
+            case 8: activeEl = this.snap1_8; break;
+            case 16: activeEl = this.snap1_16; break;
+            case 32: activeEl = this.snap1_32; break;
+        }
+        if (activeEl) {
+            activeEl.innerHTML += ' <span style="float:right">✓</span>';
+        }
+
+        this.snapTripletCheck.style.display = triplet ? "block" : "none";
     }
 
     public setUndoButtonState(undoAvailable: boolean): void {

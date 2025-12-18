@@ -1,5 +1,6 @@
 import App from "../App";
-import { registerOnKeyUp } from "../Utils/keys";
+import { ZOOM_LEVEL } from "../Env";
+import { isKeyPressed, registerOnKeyDown, registerOnKeyUp } from "../Utils/keys";
 
 /**
  * The class that control the events related to the keyboard.
@@ -22,13 +23,32 @@ export default class KeyboardController {
      * @private
      */
     private bindEvents() {
+        // Global Shortcuts
+        window.addEventListener("keydown", (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+                e.preventDefault();
+                this._app.projectController.openSaveWindow();
+            }
+        });
+
         registerOnKeyUp((key)=>{
             switch (key) {
                 case " ": // Space bar pressed : play/pause
                     this._app.hostController.onPlayButton()
                     break
             }
-        })
+        });
+
+        registerOnKeyDown((key) => {
+            const isCtrl = isKeyPressed("Control", "Meta");
+            
+            if (isCtrl && key === "ArrowRight") {
+                this._app.editorController.zoomTo(ZOOM_LEVEL * 2);
+            }
+            if (isCtrl && key === "ArrowLeft") {
+                this._app.editorController.zoomTo(ZOOM_LEVEL / 2);
+            }
+        });
     }
 
 }

@@ -519,6 +519,7 @@ export default class TracksController{
   public setColor(track: Track, color: string): void {
     track.color=color
     this._app.editorView.changeWaveFormColor(track);
+    this._app.pianoRollController.redraw();
   }
 
   /**
