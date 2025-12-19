@@ -1,8 +1,8 @@
 import { FederatedPointerEvent } from "pixi.js";
 import App from "../../App";
-import { RATIO_MILLS_BY_PX } from "../../Env";
+import { RATIO_MILLS_BY_PX, TEMPO } from "../../Env";
 import { keepAlive } from "../../Utils/gui_callback";
-import { registerOnKeyDown, registerOnKeyUp } from "../../Utils/keys";
+import { isKeyPressed, registerOnKeyDown, registerOnKeyUp } from "../../Utils/keys";
 import EditorView from "../../Views/Editor/EditorView";
 import PlayheadView from "../../Views/Editor/PlayheadView";
 
@@ -33,6 +33,9 @@ export default class PlayheadController {
   /* for disabling snapping is shift key is pressed and global snapping enabled */
   private snappingDisabled: boolean = false;
 
+  private _arrowKeyTimer: any = null;
+  private _arrowKeyInterval: any = null;
+
   constructor(app: App) {
     this._app = app;
     this._view = app.editorView.playhead;
@@ -42,6 +45,7 @@ export default class PlayheadController {
     this._app.host.onPlayHeadMove.add((pos,movedByPlayer) => {
       this._app.editorView.playhead.moveTo(pos/RATIO_MILLS_BY_PX)
       this.moveAccordingToPlayhead(pos,movedByPlayer)
+      this._app.hostView.updateTimer(pos);
     })
   }
 
@@ -52,10 +56,19 @@ export default class PlayheadController {
   private bindEvents() {
     registerOnKeyUp((key) => {
       if (key === "Shift") this.snappingDisabled = false
+      if (key === "ArrowLeft" || key === "ArrowRight") this.stopArrowRepeat();
     })
 
     registerOnKeyDown((key) => {
-      if (key === "Shift") this.snappingDisabled = true
+      if (key === "Shift") this.snappingDisabled = true;
+
+      const regionsSelected = this._app.regionsController.hasSelection();
+      const notesSelected = this._app.pianoRollController.hasSelection() && this._app.pianoRollController.isVisible;
+
+      if (!regionsSelected && !notesSelected) {
+        if (key === "ArrowLeft" && !isKeyPressed("Control", "Meta")) this.handleArrowPress(-1);
+        if (key === "ArrowRight" && !isKeyPressed("Control", "Meta")) this.handleArrowPress(1);
+      }
     })
 
     this._view.track.on("pointerup", (e) => {
@@ -141,7 +154,6 @@ export default class PlayheadController {
 
     this._app.tracksController.jumpTo(pixelPos)
     this._view.moveTo(pixelPos)
-    this._app.hostView.updateTimerByPixelsPos(pixelPos)
     this._app.hostView.metronome.playhead= pos
   }
 
@@ -203,6 +215,34 @@ export default class PlayheadController {
 
   
 
+  private handleArrowPress(direction: number) {
+      this.stopArrowRepeat(); // Safety clear
+      this.movePlayheadOneBeat(direction); // Instant move
+
+      this._arrowKeyTimer = setTimeout(() => {
+          this._arrowKeyInterval = setInterval(() => {
+                this.movePlayheadOneBeat(direction);
+          }, 50); // Speed: 50ms
+      }, 500); // Delay: 500ms
+  }
+
+  private stopArrowRepeat() {
+      if (this._arrowKeyTimer) clearTimeout(this._arrowKeyTimer);
+      if (this._arrowKeyInterval) clearInterval(this._arrowKeyInterval);
+      this._arrowKeyTimer = null;
+      this._arrowKeyInterval = null;
+  }
+
+  /**
+   * Moves the playhead by one beat in the specified direction.
+   * @param direction - 1 for forward, -1 for backward.
+   */
+  private movePlayheadOneBeat(direction: number) {
+      const beatDuration = (60 / TEMPO) * 1000;
+      const newPos = this._app.host.playhead + (direction * beatDuration);
+      this.moveTo(Math.max(0, newPos), true);
+  }
+
   /**
    * Move the view according to a a new playhead position.
    * @param newPlayhead The new playhead position in milliseconds.
@@ -230,10 +270,15 @@ export default class PlayheadController {
       }
     }
     // When hand moved
-    else{
+    else {
       // If it has just overpassed the right of the viewport, move the viewport
-      if(playheadX>viewport.right) this.scrollRight()
-      if(playheadX<viewport.left) this.scrollLeft()
+      const PADDING = 50; // px
+      if (playheadX > viewport.right) {
+        this._view.viewportLeft = playheadX - viewportWidth + PADDING;
+      }
+      else if (playheadX < viewport.left) {
+        this._view.viewportLeft = Math.max(0, playheadX - PADDING);
+      }
     }
 
   }

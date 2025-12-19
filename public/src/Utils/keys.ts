@@ -9,7 +9,7 @@ function onDown(event: KeyboardEvent){
     if (event.target != document.body) return;
     if(!keyMap[event.key]){
         keyMap[event.key] = true
-        for(const i in onKeyDownMap) onKeyDownMap[i](event.key)
+        for(const i in onKeyDownMap) onKeyDownMap[i](event.key, event)
     }
 }
 document.addEventListener('keydown', onDown)
@@ -31,7 +31,7 @@ function onBlur(){
 window.addEventListener('blur', onBlur)
 
 let onKeyDownCounter = 0
-const onKeyDownMap: {[key:string]:(key:string)=>void} = {}
+const onKeyDownMap: {[key:string]:(key:string, e:KeyboardEvent)=>void} = {}
 
 let onKeyUpCounter = 0
 const onKeyUpMap: {[key:string]:(key:string)=>void} = {}
@@ -47,10 +47,10 @@ export function isKeyPressed(...key: string[]): boolean{
 
 /**
  * Register an callback to be called when a key is pressed
- * @param callback The callback to be called, the key pressed is passed as an argument, same as the event.key
+ * @param callback The callback to be called, the key pressed is passed as an argument, same as the event.key. The event object is passed as the second argument.
  * @returns The callback id, used to unregister the callback
  */
-export function registerOnKeyDown(callback: (key:string)=>void): number{
+export function registerOnKeyDown(callback: (key:string, e:KeyboardEvent)=>void): number{
     onKeyDownMap[onKeyDownCounter] = callback
     return onKeyDownCounter++
 }

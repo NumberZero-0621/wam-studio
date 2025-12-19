@@ -2,6 +2,7 @@ import App from "../App";
 import { createSelect } from "../Utils/dom";
 import SettingsView from "../Views/SettingsView";
 import { audioCtx } from "../index";
+import { CURRENT_LANGUAGE, setLanguage, Language } from "../Utils/i18n";
 
 /**
  * The class that control the events related to the global settings of the host.
@@ -26,6 +27,7 @@ export default class SettingsController {
 
         this.initMIDIInputDevice()
         this.initAudioInputOutputDevice()
+        this.initLanguageSelector()
         this.bindEvents()
     }
 
@@ -146,6 +148,14 @@ export default class SettingsController {
     }
 
     private _selectedInputDevice: AudioNode | null = null;
+
+    private initLanguageSelector() {
+        this.view.selectLanguage.value = CURRENT_LANGUAGE;
+        this.view.selectLanguage.onchange = () => {
+            const newLang = this.view.selectLanguage.value as Language;
+            setLanguage(newLang);
+        };
+    }
 
     /**
      * Opens the settings window. It also updates the list of input and output devices. 

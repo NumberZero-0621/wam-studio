@@ -130,7 +130,10 @@ export default class EditorController {
     }
 
     public async zoomTo(new_zoom_level: number, respect_step: boolean=false): Promise<void>{
-        if(this._app.host.isPlaying)return
+        // Snap to 1.0 if crossing
+        if ((ZOOM_LEVEL < 1 && new_zoom_level > 1) || (ZOOM_LEVEL > 1 && new_zoom_level < 1)) {
+            new_zoom_level = 1;
+        }
 
         // Get zoom center
         const [zoomTarget,zoomTargetPos]= (()=>{
@@ -163,7 +166,7 @@ export default class EditorController {
         await this._view.resizeCanvas()
         this._view.loop.updatePositionFromTime(...this._app.hostController.loopRange)
         this._app.automationController.updateBPFWidth()
-        this._view.spanZoomLevel.innerHTML = ("x" + ZOOM_LEVEL.toFixed(2))
+        this._view.spanZoomLevel.value = ZOOM_LEVEL.toFixed(2)
         await Promise.all(this._app.tracksController.tracks.map( track => this._view.stretchRegions(track)))
         
         // Force immediate redraw to avoid debounce delay
@@ -216,8 +219,8 @@ export default class EditorController {
                 const isMac = navigator.platform.toUpperCase().includes('MAC');
                 if (isMac && e.metaKey || !isMac && e.ctrlKey) {
                     const zoomIn = e.deltaY > 0;
-                    if (zoomIn) this._app.editorController.zoomTo(ZOOM_LEVEL*2);
-                    else this._app.editorController.zoomTo(ZOOM_LEVEL/2);
+                    if (zoomIn) this._app.editorController.zoomTo(ZOOM_LEVEL*1.5);
+                    else this._app.editorController.zoomTo(ZOOM_LEVEL/1.5);
                 }
                 else {
                     this._view.handleWheel(e);

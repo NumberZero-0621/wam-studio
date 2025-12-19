@@ -35,6 +35,7 @@ import SettingsView from "./Views/SettingsView";
 import TracksView from "./Views/TracksView";
 import PianoRollController from "./Controllers/Editor/PianoRoll/PianoRollController";
 import AutoSaveController from "./Controllers/AutoSaveController";
+import ContextMenuController from "./Controllers/ContextMenuController";
 
 /**
  * Main class for the host. Start all controllers, views and models. All controllers and views are accessible frome this app.
@@ -58,6 +59,7 @@ export default class App {
     loopController: LoopController;
     pianoRollController: PianoRollController;
     autoSaveController: AutoSaveController;
+    contextMenuController: ContextMenuController;
 
     hostView: HostView;
     tracksView: TracksView;
@@ -112,6 +114,7 @@ export default class App {
         this.loopController = new LoopController(this);
         this.pianoRollController = new PianoRollController(this);
         this.autoSaveController = new AutoSaveController(this);
+        this.contextMenuController = new ContextMenuController(this);
         
         this.hostController.addDraggableWindow(this.pluginsView, this.latencyView, this.settingsView, 
             this.projectView, this.aboutView, this.keyboardShortcutsView);
@@ -172,13 +175,25 @@ export default class App {
             this.hostView.setUndoButtonState(this.undoManager.hasUndo())
             this.hostView.setRedoButtonState(this.undoManager.hasRedo())
         }
+
+        const genericRedraw = () => {
+            this.tracksController.tracks.forEach(track => {
+                this.editorView.drawRegions(track);
+            });
+            if (this.pianoRollController.isVisible) {
+                this.pianoRollController.redraw();
+            }
+        };
+
         this.undoManager.add({
             undo: ()=>{
                 undo()
+                genericRedraw()
                 refreshButtons()
             },
             redo: ()=>{
                 redo()
+                genericRedraw()
                 refreshButtons()
             }
         })

@@ -43,10 +43,10 @@ export default class KeyboardController {
             const isCtrl = isKeyPressed("Control", "Meta");
             
             if (isCtrl && key === "ArrowRight") {
-                this._app.editorController.zoomTo(ZOOM_LEVEL * 2);
+                this._app.editorController.zoomTo(ZOOM_LEVEL * 1.5);
             }
             if (isCtrl && key === "ArrowLeft") {
-                this._app.editorController.zoomTo(ZOOM_LEVEL / 2);
+                this._app.editorController.zoomTo(ZOOM_LEVEL / 1.5);
             }
         });
     }

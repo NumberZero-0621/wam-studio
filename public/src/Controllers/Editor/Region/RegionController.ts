@@ -1,7 +1,7 @@
 import { FederatedPointerEvent, Point, Graphics } from "pixi.js";
 import App, { crashOnDebug } from "../../../App";
 import { MIDI } from "../../../Audio/MIDI/MIDI";
-import { RATIO_MILLS_BY_PX } from "../../../Env";
+import { RATIO_MILLS_BY_PX, TEMPO } from "../../../Env";
 import MIDIRegion from "../../../Models/Region/MIDIRegion";
 import Region, { RegionOf, RegionType } from "../../../Models/Region/Region";
 import SampleRegion from "../../../Models/Region/SampleRegion";
@@ -33,11 +33,21 @@ export default class RegionController {
   protected snappingDisabled: boolean = false;
   protected previousMouseXPos: number = 0;
   private _dragGhosts: Graphics[] = [];
+  private lastGlobalPos: Point = new Point();
+  private _lastClickedRegion: { region: RegionOf<any>, trackId: number } | null = null;
   
+  private _arrowMoveState: {
+      regions: { region: RegionOf<any>, view: RegionView<any>, initialPos: number }[],
+      totalDirection: number
+  } | null = null;
+  private _arrowKeyTimer: any = null;
+  private _arrowKeyInterval: any = null;
+
   protected draggedRegionState: {
       anchorRegion: RegionOf<any>,
       initialAnchorPos: number,
       initialGlobalX: number,
+      initialViewportLeft: number,
       hasMoved: boolean,
       regionToDeselect: RegionOf<any> | null,
       draggingRegions: { 
@@ -65,6 +75,8 @@ export default class RegionController {
   private _creationStart: number = 0;
   private _newRegion: MIDIRegion | null = null;
   private _targetTrack: Track | null = null;
+
+  private _lastMoveEvent: FederatedPointerEvent | null = null;
 
   // Resize State
   private _isResizing: boolean = false;
@@ -174,6 +186,75 @@ export default class RegionController {
 
   private lastClickTime: number = 0;
 
+  public hasSelection(): boolean { return !!this.selection.primary; }
+  public hasClipboard(): boolean { return !!this.regionClipboard; }
+
+  private handleRegionArrowPress(direction: number) {
+    if (this._arrowMoveState) return;
+
+    const regionsToMove: { region: RegionOf<any>, view: RegionView<any>, initialPos: number }[] = [];
+    for (const region of this.selection.selecteds) {
+        const view = this.getView(region);
+        if (view) {
+            regionsToMove.push({ region, view, initialPos: region.pos });
+        }
+    }
+    if (regionsToMove.length === 0) return;
+    
+    this._arrowMoveState = { regions: regionsToMove, totalDirection: 0 };
+    
+    const stepMove = () => {
+        if (!this._arrowMoveState) return;
+        this._arrowMoveState.totalDirection += direction;
+        const beatDurationMs = (60 / TEMPO) * 1000;
+        const distancePx = (this._arrowMoveState.totalDirection * beatDurationMs) / RATIO_MILLS_BY_PX;
+
+        for (const item of this._arrowMoveState.regions) {
+            item.view.position.x = item.initialPos + distancePx;
+        }
+    };
+    
+    stepMove();
+    
+    this._arrowKeyTimer = setTimeout(() => {
+        this._arrowKeyInterval = setInterval(stepMove, 50);
+    }, 500);
+  }
+
+  private stopRegionArrowRepeat() {
+      if (this._arrowKeyTimer) clearTimeout(this._arrowKeyTimer);
+      if (this._arrowKeyInterval) clearInterval(this._arrowKeyInterval);
+      this._arrowKeyTimer = null;
+      this._arrowKeyInterval = null;
+
+      if (!this._arrowMoveState) return;
+    
+      if (this._arrowMoveState.totalDirection !== 0) {
+          const beatDurationMs = (60 / TEMPO) * 1000;
+          const distanceMs = this._arrowMoveState.totalDirection * beatDurationMs;
+  
+          const moves: {region: RegionOf<any>, oldTrack: Track, oldX: number, newTrack: Track, newX: number}[] = [];
+          for (const item of this._arrowMoveState.regions) {
+              const oldTrack = this._app.tracksController.getTrackById(item.region.trackId)!;
+              const oldX = item.initialPos;
+              const newStartMs = Math.max(0, item.region.start + distanceMs);
+              const newX = newStartMs / RATIO_MILLS_BY_PX;
+              moves.push({ region: item.region, oldTrack, oldX, newTrack: oldTrack, newX });
+          }
+          
+          if (moves.length > 0) {
+              this.doIt(true, 
+                  () => moves.forEach(m => this.moveRegion(m.region, m.newTrack, m.newX)),
+                  () => {
+                      moves.slice().reverse().forEach(m => this.moveRegion(m.region, m.oldTrack, m.oldX));
+                  }
+              );
+          }
+      }
+      
+      this._arrowMoveState = null;
+  }
+
   bindRegionEvents(region: Region, regionView: RegionView<any>): void {
     regionView.on("pointermove", (e: FederatedPointerEvent) => {
         if (!this._isResizing && !this.draggedRegionState) {
@@ -189,39 +270,43 @@ export default class RegionController {
     });
 
     regionView.on("pointerdown", (_e) => {
-      if (_e.button !== 0) return;
+      this._app.contextMenuController.hide();
+      if (_e.button !== 0 && _e.button !== 2) return;
       
       const localPos = regionView.toLocal(_e.global);
       let resizeMode: 'LEFT' | 'RIGHT' | null = null;
-      if (localPos.x < this.RESIZE_ZONE) resizeMode = 'LEFT';
-      else if (localPos.x > regionView.width - this.RESIZE_ZONE) resizeMode = 'RIGHT';
+      
+      if (_e.button === 0) {
+          if (localPos.x < this.RESIZE_ZONE) resizeMode = 'LEFT';
+          else if (localPos.x > regionView.width - this.RESIZE_ZONE) resizeMode = 'RIGHT';
 
-      if (resizeMode) {
-          this._isResizing = true;
-          this._resizeState = {
-              mode: resizeMode,
-              initialX: _e.global.x,
-              region: region as RegionOf<any>,
-              initialStart: region.start,
-              initialDuration: region.duration / 1000 // duration is in seconds usually in model? No, MIDI is ms, Sample is ms?
-              // Wait, region.duration getter depends on impl. 
-              // MIDIRegion.duration returns midi.duration (ms).
-              // SampleRegion.duration returns buffer.duration (ms).
-              // Let's assume ms.
-          };
-          this._resizeState.initialDuration = region.duration;
-          _e.stopPropagation();
-          return;
+          if (resizeMode) {
+              this._isResizing = true;
+              this._resizeState = {
+                  mode: resizeMode,
+                  initialX: _e.global.x,
+                  region: region as RegionOf<any>,
+                  initialStart: region.start,
+                  initialDuration: region.duration / 1000 
+              };
+              this._resizeState.initialDuration = region.duration;
+              _e.stopPropagation();
+              return;
+          }
       }
 
       const now = Date.now();
       const isDoubleClick = (now - this.lastClickTime) < 300; 
       this.lastClickTime = now;
       this.handlePointerDown(_e, regionView);
-      this._offsetX = _e.data.global.x - regionView.position.x;
+      if (_e.button === 0) {
+          this._offsetX = _e.data.global.x - regionView.position.x;
+      }
+      
       let track = this._app.tracksController.getTrackById(region.trackId);
       if (track) this._app.tracksController.select(track);
-      if (isDoubleClick && region instanceof MIDIRegion) {
+      if (isDoubleClick && region instanceof MIDIRegion && _e.button === 0) {
+          this.selection.set(null);
           this._app.pianoRollController.open(region);
       }
       _e.stopPropagation(); 
@@ -237,56 +322,115 @@ export default class RegionController {
   }
 
   private bindEvents(): void {
-    registerOnKeyUp( key => { if(key=="Shift") this.snappingDisabled=false });
-    registerOnKeyDown(key => {
+    registerOnKeyUp( key => { 
+        if(key=="Shift") this.snappingDisabled=false 
+        if (key === "ArrowLeft" || key === "ArrowRight") this.stopRegionArrowRepeat();
+    });
+    registerOnKeyDown((key, e) => {
         const meta= isKeyPressed("Control","Meta")
         switch(key){
-            case "Escape": this.selection.set(null); break;
+            case "Escape": 
+                this._app.contextMenuController.hide();
+                this.selection.set(null); 
+                break;
             case "Delete":
-            case "Backspace": this.deleteSelectedRegion(true); break;
-            case "Shift": this.snappingDisabled=true; break;
-            case "s": this.splitSelectedRegion(); break;
-            case "m": this.mergeSelectedRegion(); break;
-            case "x": if(meta)this.cutSelectedRegion(); break;
-            case "c": if(meta)this.copySelectedRegion(); break;
-            case "v": if(meta)this.pasteRegion(true); break;
-            case "a": if(meta)this.selectAllRegions(); break;
-        }
-    });
-
-        this._editorView.viewport.on("pointerdown", (e) => {
-            const originalEvent = e.originalEvent as unknown as MouseEvent;
-            // Ignore clicks in the header area (timeline/playhead)
-            // 20 is a safe margin for the timeline numbers/markers
-            if (e.data.global.y < EditorView.PLAYHEAD_HEIGHT + 20) return;
-
-            if (App.TOOL_MODE === "SELECT") {            this._isSelecting = true;
-            this._selectionStart.copyFrom(e.data.global);
-            if (!originalEvent.ctrlKey && !originalEvent.shiftKey) {
-                this.selection.set(null);
-            }
-        } else if (App.TOOL_MODE === "PEN") {
-            const globalY = e.data.global.y + this._editorView.viewport.top;
-            const waveform = this._editorView.getWaveformAtPos(globalY);
-            if (waveform) {
-                this._targetTrack = this._app.tracksController.getTrackById(waveform.trackId)!;
-                if (this._targetTrack) {
-                    this._isCreating = true;
-                    let globalX = e.data.global.x + this._editorView.viewport.left;
-                    if (this._editorView.snapping && !this.snappingDisabled) {
-                        const cellSize = this._editorView.cellSize;
-                        globalX = Math.round(globalX / cellSize) * cellSize;
-                    }
-                    this._creationStart = Math.max(0, globalX * RATIO_MILLS_BY_PX);
-                    const midi = MIDI.empty(500, 0);
-                    this._newRegion = new MIDIRegion(midi, this._creationStart);
-                    this.addRegion(this._targetTrack, this._newRegion);
+            case "Backspace": 
+                this._app.contextMenuController.hide();
+                this.deleteSelectedRegion(true); 
+                break;
+            case "Shift": 
+                this.snappingDisabled=true; 
+                break;
+            case "s": 
+                this._app.contextMenuController.hide();
+                this.splitSelectedRegion(); 
+                break;
+            case "m": 
+                this._app.contextMenuController.hide();
+                this.mergeSelectedRegion(); 
+                break;
+            case "x": 
+                if(meta) {
+                    this._app.contextMenuController.hide();
+                    this.cutSelectedRegion(); 
                 }
-            }
+                break;
+            case "c": 
+                if(meta) {
+                    this._app.contextMenuController.hide();
+                    this.copySelectedRegion();
+                }
+                break;
+            case "v": 
+                if(meta) {
+                    this._app.contextMenuController.hide();
+                    this.pasteRegion(true);
+                }
+                break;
+            case "a": 
+                if(meta){ 
+                    this._app.contextMenuController.hide();
+                    this.selectAllRegions(); 
+                    e.preventDefault(); 
+                }
+                break;
+        }
+        if (this.hasSelection() && (key === "ArrowLeft" || key === "ArrowRight") && !meta) {
+            const direction = (key === "ArrowRight") ? 1 : -1;
+            this.handleRegionArrowPress(direction);
         }
     });
+
+                this._editorView.viewport.on("pointerdown", (e) => {
+                    this._app.contextMenuController.hide();
+                    const originalEvent = e.originalEvent as unknown as MouseEvent;
+                    if (e.data.global.y < EditorView.PLAYHEAD_HEIGHT + 20) return;
+
+                    this.lastGlobalPos.copyFrom(e.data.global);
+
+                    // Right-click drag selection
+                    if (e.button === 2) {
+                        this._isSelecting = true;
+                        this._selectionStart = this._editorView.viewport.toLocal(e.data.global);
+                        this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
+                        return;
+                    }
+                    
+                    this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
+        
+                    if (App.TOOL_MODE === "SELECT") {
+                        this._isSelecting = true;
+                        this._selectionStart = this._editorView.viewport.toLocal(e.data.global);
+            
+                        // Deselect all only on left-click without modifiers
+                        if (e.button === 0 && !originalEvent.ctrlKey && !originalEvent.shiftKey) {
+                            this.selection.set(null);
+                        }
+                    } else if (App.TOOL_MODE === "PEN") {
+                        const globalY = e.data.global.y + this._editorView.viewport.top;
+                        const waveform = this._editorView.getWaveformAtPos(globalY);
+                        if (waveform) {
+                            this._targetTrack = this._app.tracksController.getTrackById(waveform.trackId)!;
+                            if (this._targetTrack) {
+                                this._isCreating = true;
+                                let globalX = e.data.global.x + this._editorView.viewport.left;
+                                if (this._editorView.snapping && !this.snappingDisabled) {
+                                    const cellSize = this._editorView.cellSize;
+                                    globalX = Math.round(globalX / cellSize) * cellSize;
+                                }
+                                this._creationStart = Math.max(0, globalX * RATIO_MILLS_BY_PX);
+                                const midi = MIDI.empty(500, 0);
+                                this._newRegion = new MIDIRegion(midi, this._creationStart);
+                                this.addRegion(this._targetTrack, this._newRegion);
+                            }
+                        }
+                    }
+                });
 
     this._editorView.viewport.on("pointermove", (e) => {
+      this.lastGlobalPos.copyFrom(e.data.global);
+      this.checkIfScrollingNeeded(e.data.global.x);
+
       if (this._isResizing && this._resizeState) {
           const dx = e.data.global.x - this._resizeState.initialX;
           const rawDt = dx * RATIO_MILLS_BY_PX;
@@ -323,7 +467,7 @@ export default class RegionController {
       else if (this.draggedRegionState) { this.handlePointerMove(e) } 
       else if (this._isSelecting) {
           const currentPos = e.data.global;
-          const localStart = this._editorView.viewport.toLocal(this._selectionStart);
+          const localStart = this._selectionStart; // Already in Local/World
           const localCurrent = this._editorView.viewport.toLocal(currentPos);
           const x = Math.min(localStart.x, localCurrent.x);
           const y = Math.min(localStart.y, localCurrent.y);
@@ -345,12 +489,17 @@ export default class RegionController {
           this._newRegion.start = startMs;
           this._newRegion.midi.duration = duration;
           const view = this.getView(this._newRegion);
-          if (view) { view.redraw(this._targetTrack.color, this._newRegion); }
+          if (view) {
+              view.position.x = startMs / RATIO_MILLS_BY_PX;
+              view.redraw(this._targetTrack.color, this._newRegion);
+          }
       }
     });
 
     this._editorView.viewport.on("pointerup", (e) => {
         this.handlePointerUp();
+        this.scrollingLeft = false;
+        this.scrollingRight = false;
         if (this._isSelecting) {
             this._isSelecting = false;
             this._editorView.clearSelectionBox();
@@ -358,6 +507,15 @@ export default class RegionController {
         if (this._isCreating) {
             this._isCreating = false;
             if (this._newRegion && this._targetTrack) {
+                const region = this._newRegion;
+                const track = this._targetTrack;
+                this._app.addRedoUndo(
+                    () => {
+                        this.addRegion(track, region);
+                        this.selection.set(region);
+                    },
+                    () => { this.removeRegion(region); }
+                );
                 this.selection.set(this._newRegion);
                 this._targetTrack.update(audioCtx);
             }
@@ -368,6 +526,8 @@ export default class RegionController {
     
     this._editorView.viewport.on("pointerupoutside", (e) => {
         this.handlePointerUp();
+        this.scrollingLeft = false;
+        this.scrollingRight = false;
         this._isSelecting = false;
         this._editorView.clearSelectionBox();
         this._isCreating = false;
@@ -379,23 +539,59 @@ export default class RegionController {
   private getNewId(): number { return this.regionIdCounter++; }
 
   private handlePointerDown(e: FederatedPointerEvent, regionView: RegionView<any>): void {
+    this.lastGlobalPos.copyFrom(e.global);
     this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
     const region = this._app.tracksController.getTrackById(regionView.trackId)?.getRegionById(regionView.id) as RegionOf<any>
     let regionToDeselect: RegionOf<any> | null = null;
 
     if(region){
-      if(isKeyPressed("Control","Meta")) {
+      if (e.shiftKey && this._lastClickedRegion) {
+          const track1 = this._app.tracksController.getTrackById(this._lastClickedRegion.trackId);
+          const track2 = this._app.tracksController.getTrackById(region.trackId);
+          
+          if (track1 && track2) {
+              const idx1 = this.tracks.indexOf(track1);
+              const idx2 = this.tracks.indexOf(track2);
+              
+              if (idx1 !== -1 && idx2 !== -1) {
+                  const minIdx = Math.min(idx1, idx2);
+                  const maxIdx = Math.max(idx1, idx2);
+                  
+                  const start1 = this._lastClickedRegion.region.start;
+                  const start2 = region.start;
+                  const minStart = Math.min(start1, start2);
+                  const maxStart = Math.max(start1, start2);
+                  
+                  this.selection.set(null);
+                  
+                  this.tracks.forEach((track, i) => {
+                      if (i >= minIdx && i <= maxIdx) {
+                          track.regions.forEach(r => {
+                              if (r.start >= minStart - 0.1 && r.start <= maxStart + 0.1) {
+                                  this.selection.add(r as RegionOf<any>);
+                              }
+                          });
+                      }
+                  });
+              }
+          }
+      } else if(isKeyPressed("Control","Meta")) {
           if (this.selection.isSelected(region)) {
               regionToDeselect = region;
           } else {
               this.selection.toggle(region, true);
           }
+          this._lastClickedRegion = { region, trackId: region.trackId };
       }
       else {
           if (!this.selection.isSelected(region)) this.selection.set(region);
           else this.selection.add(region);
+          this._lastClickedRegion = { region, trackId: region.trackId };
       }
     }
+    
+    if (e.button !== 0) return; // Only start drag if Left Click
+
     const toMove= this.selection.primary
     const view= this.getView(this.selection.primary)
     if (view && toMove) {
@@ -416,6 +612,7 @@ export default class RegionController {
           anchorRegion: toMove, 
           initialAnchorPos: toMove.pos,
           initialGlobalX: e.global.x,
+          initialViewportLeft: this._editorView.viewport.left,
           hasMoved: false,
           regionToDeselect: regionToDeselect,
           draggingRegions: draggingRegions
@@ -577,6 +774,73 @@ export default class RegionController {
     return ( playHeadPosX >= selectedRegionPosX && playHeadPosX <= selectedRegionPosX + selectedRegionWidth );
   }
 
+  private updateDragPosition(globalX: number, globalY: number) {
+      if (!this.draggedRegionState || !this._offsetX) return;
+
+      const anchor = this.draggedRegionState.anchorRegion;
+      
+      // Calculate new X for Anchor
+      const scrollDiff = this._editorView.viewport.left - this.draggedRegionState.initialViewportLeft;
+      let newX = globalX - this._offsetX + scrollDiff;
+      
+      newX = Math.max(0, Math.min(newX, this._editorView.worldWidth));
+      
+      // Snapping for Anchor
+      if ( this._editorView.snapping && !this.snappingDisabled && !this.scrollingLeft && !this.scrollingRight ) {
+        const cellSize = this._editorView.cellSize;
+        newX = Math.round(newX / cellSize) * cellSize;
+      }
+      
+      // Calculate new Track for Anchor
+      const view = this.getView(anchor);
+      if (!view) return;
+      let parentWaveform = view.parent as WaveformView;
+      // Adjust globalY relative to viewport content (scrolling Y might be an issue if implemented, but usually tracks scroll vertically)
+      // Here globalY is screen coordinate. Waveform y is relative to container.
+      // Assuming vertical scrolling is handled by container moving.
+      // But we need to find which waveform is under globalY.
+      
+      // The original code used globalY + viewport.top to check against waveform Y.
+      let y = globalY + this._editorView.viewport.top;
+
+      let parentTop = parentWaveform.y;
+      let parentBottom = parentTop + parentWaveform.height;
+      let targetTrackId = anchor.trackId;
+      
+      if(y > parentBottom && !this._app.waveformController.isLast(parentWaveform)){
+        targetTrackId = this._app.waveformController.getNextWaveform(parentWaveform)?.trackId ?? targetTrackId
+      }
+      else if(y < parentTop && !this._app.waveformController.isFirst(parentWaveform)){
+        targetTrackId = this._app.waveformController.getPreviousWaveform(parentWaveform)?.trackId ?? targetTrackId
+      }
+      
+      // Apply changes to ALL regions
+      const tracks = this.tracks;
+      const anchorInfo = this.draggedRegionState.draggingRegions.find(r => r.region === anchor);
+      if (!anchorInfo) return;
+      
+      const currentAnchorTrackIndex = tracks.findIndex(t => t.id === anchorInfo.initialTrackId); 
+      const newAnchorTrackIndex = tracks.findIndex(t => t.id === targetTrackId);
+      const trackIndexDelta = newAnchorTrackIndex - currentAnchorTrackIndex;
+      
+      // Calculate Anchor Start MS
+      const anchorNewStartMs = newX * RATIO_MILLS_BY_PX;
+
+      for (const item of this.draggedRegionState.draggingRegions) {
+          // Calculate New Track
+          const itemInitialTrackIndex = tracks.findIndex(t => t.id === item.initialTrackId);
+          let itemNewTrackIndex = itemInitialTrackIndex + trackIndexDelta;
+          itemNewTrackIndex = Math.max(0, Math.min(tracks.length - 1, itemNewTrackIndex));
+          const itemNewTrack = tracks.get(itemNewTrackIndex);
+          
+          // Calculate New Position
+          const itemNewStartMs = Math.max(0, anchorNewStartMs + item.offsetMs);
+          const itemNewX = itemNewStartMs / RATIO_MILLS_BY_PX;
+          
+          this.moveRegion(item.region, itemNewTrack, itemNewX);
+      }
+  }
+
   private handlePointerMove(e: FederatedPointerEvent): void {
     if (!this.draggedRegionState || !this._offsetX) return;
 
@@ -593,120 +857,111 @@ export default class RegionController {
         ghost.visible = isCopy;
     }
 
-    const anchor = this.draggedRegionState.anchorRegion;
     const delta = e.data.global.x - this.previousMouseXPos;
     this.previousMouseXPos = e.data.global.x;
+    // Note: We should probably allow updates even if delta is 0 if scroll changed, 
+    // but this function is called on pointer move.
     if (delta === 0) return;
     
-    let x = e.data.global.x;
-    let y = e.data.global.y + this._editorView.viewport.top;
-    
-    // Calculate new X for Anchor
-    let newX = x - this._offsetX;
-    newX = Math.max(0, Math.min(newX, this._editorView.worldWidth));
-    
-    // Snapping for Anchor
-    if ( this._editorView.snapping && !this.snappingDisabled && !this.scrollingLeft && !this.scrollingRight ) {
-      const cellSize = this._editorView.cellSize;
-      newX = Math.round(newX / cellSize) * cellSize;
-    }
-    
-    // Calculate new Track for Anchor
-    const view = this.getView(anchor);
-    if (!view) return;
-    let parentWaveform = view.parent as WaveformView;
-    let parentTop = parentWaveform.y;
-    let parentBottom = parentTop + parentWaveform.height;
-    let targetTrackId = anchor.trackId;
-    
-    if(y > parentBottom && !this._app.waveformController.isLast(parentWaveform)){
-      targetTrackId = this._app.waveformController.getNextWaveform(parentWaveform)?.trackId ?? targetTrackId
-    }
-    else if(y < parentTop && !this._app.waveformController.isFirst(parentWaveform)){
-      targetTrackId = this._app.waveformController.getPreviousWaveform(parentWaveform)?.trackId ?? targetTrackId
-    }
-    
-    // Apply changes to ALL regions
-    const tracks = this.tracks;
-    const anchorInfo = this.draggedRegionState.draggingRegions.find(r => r.region === anchor);
-    if (!anchorInfo) return;
-    
-    const currentAnchorTrackIndex = tracks.findIndex(t => t.id === anchorInfo.initialTrackId); 
-    const newAnchorTrackIndex = tracks.findIndex(t => t.id === targetTrackId);
-    const trackIndexDelta = newAnchorTrackIndex - currentAnchorTrackIndex;
-    
-    // Calculate Anchor Start MS
-    const anchorNewStartMs = newX * RATIO_MILLS_BY_PX;
-
-    for (const item of this.draggedRegionState.draggingRegions) {
-        // Calculate New Track
-        const itemInitialTrackIndex = tracks.findIndex(t => t.id === item.initialTrackId);
-        let itemNewTrackIndex = itemInitialTrackIndex + trackIndexDelta;
-        itemNewTrackIndex = Math.max(0, Math.min(tracks.length - 1, itemNewTrackIndex));
-        const itemNewTrack = tracks.get(itemNewTrackIndex);
-        
-        // Calculate New Position
-        const itemNewStartMs = Math.max(0, anchorNewStartMs + item.offsetMs);
-        const itemNewX = itemNewStartMs / RATIO_MILLS_BY_PX;
-        
-        this.moveRegion(item.region, itemNewTrack, itemNewX);
-    }
-
+    this.updateDragPosition(e.data.global.x, e.data.global.y);
     this.checkIfScrollingNeeded(e.data.global.x);
   }
 
   checkIfScrollingNeeded(mousePosX: number) {
-    if (!this.selection.primary || !this._offsetX) return
-    const view= this.getView(this.selection.primary)
-    const SCROLL_TRIGGER_ZONE_WIDTH = 50;
-    const MIN_SCROLL_SPEED = 1;
-    const MAX_SCROLL_SPEED = 10;
-    const regionEndPos = this.selection.primary.pos + view.width;
-    const regionStartPos = this.selection.primary.pos;
-    let viewport = this._editorView.viewport;
-    const viewportWidth = viewport.right - viewport.left;
-    const distanceToRightEdge = viewportWidth - (regionEndPos - viewport.left);
-    this.scrollingRight = mousePosX >= viewportWidth - SCROLL_TRIGGER_ZONE_WIDTH;
-    if (this.scrollingRight && regionEndPos <= this._editorView.worldWidth) {
-      this.incrementScrollSpeed = this.map( distanceToRightEdge, SCROLL_TRIGGER_ZONE_WIDTH, -SCROLL_TRIGGER_ZONE_WIDTH, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED );
-    }
-    const distanceToLeftEdge = viewport.left - regionStartPos;
-    this.scrollingLeft = mousePosX <= SCROLL_TRIGGER_ZONE_WIDTH && regionStartPos > 0;
-    if (this.scrollingLeft) {
-      this.incrementScrollSpeed = this.map( distanceToLeftEdge, -SCROLL_TRIGGER_ZONE_WIDTH, SCROLL_TRIGGER_ZONE_WIDTH, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED );
+    if (!this._editorView.viewport) return;
+    const screenWidth = this._editorView.screen.width;
+    const SCROLL_ZONE = 50;
+    
+    this.scrollingRight = mousePosX >= screenWidth - SCROLL_ZONE;
+    this.scrollingLeft = mousePosX <= SCROLL_ZONE;
+
+    if (this.scrollingRight) {
+       const dist = mousePosX - (screenWidth - SCROLL_ZONE);
+       this.incrementScrollSpeed = Math.min(20, Math.max(2, dist / 2));
+    } else if (this.scrollingLeft) {
+       const dist = SCROLL_ZONE - mousePosX;
+       this.incrementScrollSpeed = Math.min(20, Math.max(2, dist / 2));
     }
   }
 
   map(value: number, istart: number, istop: number, ostart: number, ostop: number) { return ostart + (ostop - ostart) * ((value - istart) / (istop - istart)); }
 
   viewportAnimationLoop() {
-    if (!this.draggedRegionState || !this._offsetX) return
-    const anchor = this.draggedRegionState.anchorRegion;
-    const view = this.getView(anchor);
-    if (!view) return;
+    const isActive = !!this.draggedRegionState || this._isSelecting || this._isCreating;
+    if (!isActive) {
+        this.scrollingLeft = false;
+        this.scrollingRight = false;
+        return;
+    }
     
     let viewScrollSpeed = 0;
-    if (this.scrollingRight) { viewScrollSpeed = this.incrementScrollSpeed; this._offsetX -= viewScrollSpeed; } 
-    else if (this.scrollingLeft) { viewScrollSpeed = -this.incrementScrollSpeed; this._offsetX -= viewScrollSpeed; }
+    if (this.scrollingRight) { viewScrollSpeed = this.incrementScrollSpeed; } 
+    else if (this.scrollingLeft) { viewScrollSpeed = -this.incrementScrollSpeed; }
     
-    if (this.scrollingRight || this.scrollingLeft) {
-      let viewport = this._editorView.viewport;
-      viewport.left += viewScrollSpeed;
-      
-      // Update ALL regions
-      for (const item of this.draggedRegionState.draggingRegions) {
-          const rView = this.getView(item.region);
-          if (rView && rView.position.x + viewScrollSpeed >= 0) {
-             item.region.start += viewScrollSpeed * RATIO_MILLS_BY_PX;
-             rView.position.x += viewScrollSpeed;
-          }
-      }
+    if (viewScrollSpeed !== 0) {
+        let viewport = this._editorView.viewport;
+        
+        // Update Viewport
+        viewport.left += viewScrollSpeed;
+        
+        // Clamp
+        if (viewport.left < 0) { viewport.left = 0; this.scrollingLeft = false; }
+        if (viewport.right > this._editorView.worldWidth) { viewport.right = this._editorView.worldWidth; this.scrollingRight = false; }
 
-      const horizontalScrollbar = this._editorView.horizontalScrollbar;
-      horizontalScrollbar.moveTo(viewport.left);
-      if (this.scrollingLeft && viewport.left < 0) { viewport.left = 0; this.scrollingLeft = false; }
-      if (this.scrollingRight && viewport.right > this._editorView.worldWidth) { viewport.right = this._editorView.worldWidth; this.scrollingRight = false; }
+        const horizontalScrollbar = this._editorView.horizontalScrollbar;
+        horizontalScrollbar.moveTo(viewport.left);
     }
+    
+    // 1. Dragging Regions
+    if (this.draggedRegionState) {
+        this.updateDragPosition(this.lastGlobalPos.x, this.lastGlobalPos.y);
+    }
+
+    // 2. Selecting
+    if (this._isSelecting) {
+        let viewport = this._editorView.viewport;
+        // _selectionStart is in Local/World coords (FIXED via pointerdown update)
+        // We need current mouse pos in Local/World coords
+        const currentLocal = viewport.toLocal(this.lastGlobalPos);
+        
+        // Use pre-calculated local start (fixed in world)
+        const localStart = this._selectionStart;
+        
+        const x = Math.min(localStart.x, currentLocal.x);
+        const y = Math.min(localStart.y, currentLocal.y);
+        const w = Math.max(1, Math.abs(localStart.x - currentLocal.x));
+        const h = Math.max(1, Math.abs(localStart.y - currentLocal.y));
+        
+        this._editorView.drawSelectionBox(x, y, w, h);
+        this.updateSelectionFromBox(x, y, w, h);
+    }
+
+    // 3. Creating
+    if (this._isCreating && this._newRegion && this._targetTrack) {
+        let viewport = this._editorView.viewport;
+        let globalX = this.lastGlobalPos.x + viewport.left; 
+        if (this._editorView.snapping && !this.snappingDisabled) {
+              const cellSize = this._editorView.cellSize;
+              globalX = Math.round(globalX / cellSize) * cellSize;
+        }
+        
+        const currentPosMs = globalX * RATIO_MILLS_BY_PX;
+        let startMs = this._creationStart;
+        let endMs = currentPosMs;
+        
+        if (endMs < startMs) { [startMs, endMs] = [endMs, startMs]; }
+        let duration = Math.max(10, endMs - startMs);
+        
+        this._newRegion.start = startMs;
+        this._newRegion.midi.duration = duration;
+        
+        const view = this.getView(this._newRegion);
+        if (view) {
+            view.position.x = startMs / RATIO_MILLS_BY_PX;
+            view.redraw(this._targetTrack.color, this._newRegion);
+        }
+    }
+
     requestAnimationFrame(this.viewportAnimationLoop.bind(this));
   }
 

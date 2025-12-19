@@ -22,6 +22,7 @@ export default class PianoRollController {
     private _draggedNote: { 
         initialX: number, 
         initialY: number, 
+        initialScrollX: number,
         originGlobalStart: number,
         notes: { note: MIDINote, region: MIDIRegion, initialStart: number, initialNote: number, graphic: any, duration: number }[],
         noteToDeselect: MIDINote | null,
@@ -40,6 +41,7 @@ export default class PianoRollController {
     private _resizeState: {
         mode: 'LEFT' | 'RIGHT';
         initialX: number;
+        initialScrollX: number;
         notes: { note: MIDINote, region: MIDIRegion, initialStart: number, initialDuration: number, graphic: any }[];
     } | null = null;
     private readonly RESIZE_ZONE = 5;
@@ -55,6 +57,27 @@ export default class PianoRollController {
     // Selection state
     private _isSelecting: boolean = false;
     private _selectionStart: Point = new Point();
+    private _lastClickedNote: { note: MIDINote, globalStart: number } | null = null;
+
+    private _lastMoveEvent: FederatedPointerEvent | null = null;
+    private scrollingLeft: boolean = false;
+    private scrollingRight: boolean = false;
+    private incrementScrollSpeed: number = 0;
+    private viewportAnimationLoopId: number = 0;
+
+    private _arrowKeyTimer: any = null;
+    private _arrowKeyInterval: any = null;
+    private _arrowMoveState: {
+        notes: { note: MIDINote, region: MIDIRegion, initialStart: number, initialNote: number, graphic: any }[],
+        totalDirection: number
+    } | null = null;
+
+    private _arrowVerticalKeyTimer: any = null;
+    private _arrowVerticalKeyInterval: any = null;
+    private _arrowVerticalMoveState: {
+        notes: { note: MIDINote, region: MIDIRegion, initialStart: number, initialNote: number, graphic: any }[],
+        totalShift: number
+    } | null = null;
 
     constructor(app: App) {
         this._app = app;
@@ -106,11 +129,200 @@ export default class PianoRollController {
                     if (targetScrollX !== scrollX) {
                         this._view.updateScroll(targetScrollX - scrollX, 0);
                     }
+                } else {
+                    const PADDING = 50; // px
+                    const viewportWidth = this._view.viewportWidth;
+                    const scrollX = this._view.scrollX;
+                    const viewportLeft = scrollX;
+                    const viewportRight = scrollX + viewportWidth;
+
+                    let targetScrollX = scrollX;
+
+                    if (playheadX > viewportRight) {
+                        // Jump viewport so playhead is at right edge minus padding
+                        targetScrollX = playheadX - viewportWidth + PADDING;
+                    }
+                    else if (playheadX < viewportLeft) {
+                        // Jump viewport so playhead is at left edge plus padding
+                        targetScrollX = Math.max(0, playheadX - PADDING);
+                    }
+
+                    targetScrollX = Math.max(0, targetScrollX);
+
+                    if (targetScrollX !== scrollX) {
+                        this._view.updateScroll(targetScrollX - scrollX, 0);
+                    }
                 }
             }
         });
 
         this.bindEvents();
+    }
+
+    private handleNoteArrowPress(direction: number) {
+        if (this._arrowMoveState) return;
+
+        const notesToMove: { note: MIDINote, region: MIDIRegion, initialStart: number, initialNote: number, graphic: any }[] = [];
+        const processedNotes = new Set<MIDINote>();
+        for (const child of this._view.notesContainer.children as any[]) {
+            if (child.noteData && this._selectedNotes.has(child.noteData.note) && !processedNotes.has(child.noteData.note)) {
+                processedNotes.add(child.noteData.note);
+                notesToMove.push({
+                    note: child.noteData.note,
+                    region: child.noteData.region,
+                    initialStart: child.noteData.start,
+                    initialNote: child.noteData.note.note,
+                    graphic: child
+                });
+            }
+        }
+        if (notesToMove.length === 0) return;
+
+        this._arrowMoveState = {
+            notes: notesToMove,
+            totalDirection: 0
+        };
+
+        const stepMove = () => {
+            if (!this._arrowMoveState) return;
+            this._arrowMoveState.totalDirection += direction;
+            const beatDurationMs = (60 / TEMPO) * 1000;
+            const distanceMs = this._arrowMoveState.totalDirection * beatDurationMs;
+
+            for (const item of this._arrowMoveState.notes) {
+                const newGlobalStart = (item.region.start + item.initialStart) + distanceMs;
+                item.graphic.position.x = newGlobalStart / RATIO_MILLS_BY_PX;
+            }
+        };
+        
+        stepMove();
+
+        this._arrowKeyTimer = setTimeout(() => {
+            this._arrowKeyInterval = setInterval(stepMove, 50);
+        }, 500);
+    }
+        
+    private stopNoteArrowRepeat() {
+        clearTimeout(this._arrowKeyTimer);
+        clearInterval(this._arrowKeyInterval);
+        this._arrowKeyTimer = null;
+        this._arrowKeyInterval = null;
+
+        if (!this._arrowMoveState) return;
+
+        if (this._arrowMoveState.totalDirection !== 0) {
+            const beatDurationMs = (60 / TEMPO) * 1000;
+            const distanceMs = this._arrowMoveState.totalDirection * beatDurationMs;
+
+            this.executeWithUndo(() => {
+                const newSelection = new Set<MIDINote>();
+                for (const item of this._arrowMoveState!.notes) {
+                    const newGlobalStart = Math.max(0, (item.region.start + item.initialStart) + distanceMs);
+                    this._deleteNoteInternal(item.region, item.note, item.initialStart);
+                    const addedNote = this._addNoteInternal(item.initialNote, newGlobalStart, item.note.duration);
+                    if (addedNote) newSelection.add(addedNote);
+                }
+                this._selectedNotes = newSelection;
+            });
+        }
+        
+        this._arrowMoveState = null;
+    }
+
+    private handleNoteVerticalArrowPress(shift: number) {
+        if (this._arrowVerticalMoveState) return;
+
+        const notesToMove: { note: MIDINote, region: MIDIRegion, initialStart: number, initialNote: number, graphic: any }[] = [];
+        const processedNotes = new Set<MIDINote>();
+        for (const child of this._view.notesContainer.children as any[]) {
+            if (child.noteData && this._selectedNotes.has(child.noteData.note) && !processedNotes.has(child.noteData.note)) {
+                processedNotes.add(child.noteData.note);
+                notesToMove.push({
+                    note: child.noteData.note,
+                    region: child.noteData.region,
+                    initialStart: child.noteData.start,
+                    initialNote: child.noteData.note.note,
+                    graphic: child
+                });
+            }
+        }
+        if (notesToMove.length === 0) return;
+
+        this._arrowVerticalMoveState = {
+            notes: notesToMove,
+            totalShift: 0
+        };
+
+        const stepMove = () => {
+            if (!this._arrowVerticalMoveState) return;
+            this._arrowVerticalMoveState.totalShift += shift;
+
+            for (const item of this._arrowVerticalMoveState.notes) {
+                const newNoteVal = Math.max(0, Math.min(127, item.initialNote + this._arrowVerticalMoveState.totalShift));
+                const newY = (127 - newNoteVal) * this._view.NOTE_HEIGHT;
+                item.graphic.position.y = newY;
+            }
+            
+             if (this._arrowVerticalMoveState.notes.length > 0) {
+                 const leader = this._arrowVerticalMoveState.notes[0];
+                 const newNoteVal = Math.max(0, Math.min(127, leader.initialNote + this._arrowVerticalMoveState.totalShift));
+                 this.previewNote(newNoteVal);
+             }
+        };
+        
+        stepMove();
+
+        this._arrowVerticalKeyTimer = setTimeout(() => {
+            this._arrowVerticalKeyInterval = setInterval(stepMove, 100);
+        }, 500);
+    }
+        
+    private stopNoteVerticalArrowRepeat() {
+        this.stopPreview();
+        clearTimeout(this._arrowVerticalKeyTimer);
+        clearInterval(this._arrowVerticalKeyInterval);
+        this._arrowVerticalKeyTimer = null;
+        this._arrowVerticalKeyInterval = null;
+
+        if (!this._arrowVerticalMoveState) return;
+
+        if (this._arrowVerticalMoveState.totalShift !== 0) {
+            const shift = this._arrowVerticalMoveState.totalShift;
+
+            this.executeWithUndo(() => {
+                const newSelection = new Set<MIDINote>();
+                for (const item of this._arrowVerticalMoveState!.notes) {
+                    const newNoteVal = Math.max(0, Math.min(127, item.initialNote + shift));
+                    const globalStart = item.region.start + item.initialStart;
+                    
+                    this._deleteNoteInternal(item.region, item.note, item.initialStart);
+                    const addedNote = this._addNoteInternal(newNoteVal, globalStart, item.note.duration);
+                    if (addedNote) newSelection.add(addedNote);
+                }
+                this._selectedNotes = newSelection;
+                this.redraw();
+            });
+        }
+        
+        this._arrowVerticalMoveState = null;
+    }
+
+    private handleZoom(multiplier: number) {
+        this._app.contextMenuController.hide();
+
+        const currentRatio = RATIO_MILLS_BY_PX;
+        const playheadMs = this._app.host.playhead;
+        const scrollX = this._view.scrollX;
+
+        const playheadScreenX = (playheadMs / currentRatio) - scrollX;
+
+        this._app.editorController.zoomTo(ZOOM_LEVEL * multiplier);
+
+        const nextRatio = RATIO_MILLS_BY_PX;
+        const newPlayheadX = playheadMs / nextRatio;
+        const newScrollX = Math.max(0, newPlayheadX - playheadScreenX);
+
+        this._view.updateScroll(newScrollX - scrollX, 0);
     }
 
     public open(region: MIDIRegion) {
@@ -134,7 +346,13 @@ export default class PianoRollController {
         // Scroll to the region start initially
         this._view.scrollX = region.start / RATIO_MILLS_BY_PX;
         this._view.updateScroll(0, 0);
+
+        // Sync playhead
+        const playheadX = this._app.host.playhead / RATIO_MILLS_BY_PX;
+        this._view.setPlayheadPosition(playheadX);
     }
+
+    public get isVisible(): boolean { return this._isVisible; }
 
     public resize() {
         if (!this._isVisible) return;
@@ -203,6 +421,157 @@ export default class PianoRollController {
         }
     }
 
+    private viewportAnimationLoop() {
+        if (!this._isVisible) return;
+
+        const isActive = this._isDragging || this._isResizing || this._isSelecting || this._creationState || this._isDraggingPlayhead;
+        
+        if (!isActive) {
+            this.scrollingLeft = false;
+            this.scrollingRight = false;
+            return; 
+        }
+
+        if (this.scrollingLeft || this.scrollingRight) {
+             const speed = this.incrementScrollSpeed; 
+             
+             let dx = 0;
+             if (this.scrollingRight) dx = speed;
+             if (this.scrollingLeft) dx = -speed;
+             
+             if (dx !== 0) {
+                 this._view.updateScroll(dx, 0);
+                 
+                 // Reuse _lastMousePos
+                 const globalPos = this._lastMousePos;
+                 
+                 // 1. Selection
+                 if (this._isSelecting) {
+                     const localPos = this._view.contentContainer.toLocal(globalPos);
+                     const x = Math.min(this._selectionStart.x, localPos.x);
+                     const y = Math.min(this._selectionStart.y, localPos.y);
+                     const w = Math.abs(this._selectionStart.x - localPos.x);
+                     const h = Math.abs(this._selectionStart.y - localPos.y);
+                     
+                     this._view.drawSelectionBox(x, y, w, h);
+                     this.updateSelectionFromBox(x, y, w, h);
+                     
+                     let color = 0xFF0000;
+                     if (this._track && this._track.color) color = parseInt(this._track.color.replace("#", ""), 16);
+                     this._view.refreshNoteSelection(this._selectedNotes, color);
+                 }
+                 
+                 // 2. Creation
+                 if (this._creationState) {
+                      const localPos = this._view.notesContainer.toLocal(globalPos);
+                      let targetX = localPos.x;
+                      targetX = this.snap(targetX);
+                      
+                      const targetTime = Math.max(0, targetX * RATIO_MILLS_BY_PX);
+                      const anchorTime = this._creationState.start;
+                      const startTime = Math.min(anchorTime, targetTime);
+                      const endTime = Math.max(anchorTime, targetTime);
+                      const duration = Math.max(0, endTime - startTime);
+                      
+                      const x = startTime / RATIO_MILLS_BY_PX;
+                      const w = Math.max(1, duration / RATIO_MILLS_BY_PX);
+                      
+                      this._creationState.ghost.clear();
+                      let color = 0xFF0000;
+                      if (this._track && this._track.color) color = parseInt(this._track.color.replace("#", ""), 16);
+                      this._creationState.ghost.beginFill(color, 0.5);
+                      this._creationState.ghost.lineStyle(1, 0xFFFFFF);
+                      this._creationState.ghost.drawRect(0, 0, w, this._view.NOTE_HEIGHT);
+                      this._creationState.ghost.endFill();
+                      this._creationState.ghost.position.set(x, (127 - this._creationState.note) * this._view.NOTE_HEIGHT);
+                 }
+                 
+                 // 3. Dragging
+                 if (this._isDragging && this._draggedNote) {
+                      const scrollDelta = (this._view.scrollX - this._draggedNote.initialScrollX) * RATIO_MILLS_BY_PX;
+                      const dx = globalPos.x - this._draggedNote.initialX;
+                      const rawDt = dx * RATIO_MILLS_BY_PX + scrollDelta;
+                      
+                      const originCurrent = this._draggedNote.originGlobalStart + rawDt;
+                      let originSnappedX = Math.max(0, originCurrent) / RATIO_MILLS_BY_PX;
+                      originSnappedX = this.snap(originSnappedX);
+                      const originSnappedGlobalStart = originSnappedX * RATIO_MILLS_BY_PX;
+                      const effectiveDt = originSnappedGlobalStart - this._draggedNote.originGlobalStart;
+
+                      const dy = globalPos.y - this._draggedNote.initialY;
+                      const dNote = -Math.round(dy / this._view.NOTE_HEIGHT);
+
+                      for (const item of this._draggedNote.notes) {
+                          const globalStart = item.region.start + item.initialStart + effectiveDt;
+                          let newGlobalStart = Math.max(0, globalStart);
+                          let newX = newGlobalStart / RATIO_MILLS_BY_PX;
+                          
+                          const newNoteVal = Math.max(0, Math.min(127, item.initialNote + dNote));
+                          const newY = (127 - newNoteVal) * this._view.NOTE_HEIGHT;
+                          
+                          item.graphic.position.set(newX, newY);
+                      }
+                 }
+                 
+                 // 4. Resizing
+                 if (this._isResizing && this._resizeState) {
+                    const scrollDelta = (this._view.scrollX - this._resizeState.initialScrollX) * RATIO_MILLS_BY_PX;
+                    const dx = globalPos.x - this._resizeState.initialX;
+                    const rawDt = dx * RATIO_MILLS_BY_PX + scrollDelta;
+
+                    for (const item of this._resizeState.notes) {
+                        const originalGlobalStart = item.region.start + item.initialStart;
+                        const originalGlobalEnd = originalGlobalStart + item.initialDuration;
+
+                        if (this._resizeState.mode === 'RIGHT') {
+                            const newRawEnd = originalGlobalEnd + rawDt;
+                            let newSnappedEndX = newRawEnd / RATIO_MILLS_BY_PX;
+                            newSnappedEndX = this.snap(newSnappedEndX);
+                            const newSnappedEnd = newSnappedEndX * RATIO_MILLS_BY_PX;
+                            let newDuration = Math.max(RATIO_MILLS_BY_PX * 2, newSnappedEnd - originalGlobalStart);
+                            const newW = newDuration / RATIO_MILLS_BY_PX;
+                            item.graphic.width = newW;
+                        } else {
+                            const newRawStart = originalGlobalStart + rawDt;
+                            let newSnappedStartX = newRawStart / RATIO_MILLS_BY_PX;
+                            newSnappedStartX = this.snap(newSnappedStartX);
+                            const newSnappedStart = Math.max(0, newSnappedStartX * RATIO_MILLS_BY_PX);
+                            
+                            let newDuration = Math.max(RATIO_MILLS_BY_PX * 2, originalGlobalEnd - newSnappedStart);
+                            const effectiveStart = originalGlobalEnd - newDuration;
+                            
+                            const newX = effectiveStart / RATIO_MILLS_BY_PX;
+                            const newW = newDuration / RATIO_MILLS_BY_PX;
+                            item.graphic.x = newX;
+                            item.graphic.width = newW;
+                        }
+                    }
+                 }
+             }
+        }
+        
+        this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
+    }
+
+    private checkIfScrollingNeeded(globalX: number) {
+        if (!this._view || !this._view.visible) return;
+        
+        const viewportWidth = this._view.viewportWidth;
+        const localPos = this._view.toLocal(new Point(globalX, 0));
+        const SCROLL_ZONE = 50;
+        
+        this.scrollingRight = localPos.x >= viewportWidth - SCROLL_ZONE;
+        this.scrollingLeft = localPos.x <= SCROLL_ZONE;
+        
+        if (this.scrollingRight) {
+             const dist = localPos.x - (viewportWidth - SCROLL_ZONE);
+             this.incrementScrollSpeed = Math.min(20, Math.max(2, dist / 2));
+        } else if (this.scrollingLeft) {
+             const dist = SCROLL_ZONE - localPos.x;
+             this.incrementScrollSpeed = Math.min(20, Math.max(2, dist / 2));
+        }
+    }
+
     private snap(val: number): number {
         if (this._app.editorView.snapping) {
             const cellSize = this._app.editorView.cellSize;
@@ -210,6 +579,9 @@ export default class PianoRollController {
         }
         return val;
     }
+
+    public hasSelection(): boolean { return this._selectedNotes.size > 0; }
+    public hasClipboard(): boolean { return this._clipboard.length > 0; }
 
     private bindEvents() {
         // Window Resize
@@ -224,6 +596,16 @@ export default class PianoRollController {
                 if (this._isVisible) this.resize();
             }, 50); 
         });
+
+        window.addEventListener("keyup", (e) => {
+            if (!this._isVisible) return;
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                this.stopNoteArrowRepeat();
+            }
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                this.stopNoteVerticalArrowRepeat();
+            }
+        }, true);
 
         // Keyboard Shortcuts (Capture phase to priority over global listeners)
         window.addEventListener("keydown", (e) => {
@@ -243,7 +625,24 @@ export default class PianoRollController {
                 }
             }
 
+            if (this.hasSelection() && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.ctrlKey && !e.metaKey) {
+                const direction = e.key === "ArrowRight" ? 1 : -1;
+                this.handleNoteArrowPress(direction);
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return;
+            }
+
+            if (this.hasSelection() && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.ctrlKey && !e.metaKey) {
+                const shift = e.key === "ArrowUp" ? 1 : -1;
+                this.handleNoteVerticalArrowPress(shift);
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return;
+            }
+
             if (e.key === "Escape") {
+                this._app.contextMenuController.hide();
                 if (this._creationState) {
                     this._creationState.ghost.destroy();
                     this._creationState = null;
@@ -257,6 +656,7 @@ export default class PianoRollController {
 
             // Delete
             if (e.key === "Delete" || e.key === "Backspace") {
+                this._app.contextMenuController.hide();
                 this.deleteSelectedNotes();
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -265,6 +665,7 @@ export default class PianoRollController {
 
             // Copy
             if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+                this._app.contextMenuController.hide();
                 this.copySelectedNotes();
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -273,6 +674,7 @@ export default class PianoRollController {
 
             // Cut
             if ((e.ctrlKey || e.metaKey) && e.key === "x") {
+                this._app.contextMenuController.hide();
                 this.cutSelectedNotes();
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -281,6 +683,7 @@ export default class PianoRollController {
 
             // Paste
             if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+                this._app.contextMenuController.hide();
                 this.pasteNotes();
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -289,7 +692,7 @@ export default class PianoRollController {
 
             // Zoom In (Ctrl + Right Arrow)
             if ((e.ctrlKey || e.metaKey) && e.key === "ArrowRight") {
-                this._app.editorController.zoomTo(ZOOM_LEVEL * 2);
+                this.handleZoom(1.5);
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 return;
@@ -297,7 +700,7 @@ export default class PianoRollController {
 
             // Zoom Out (Ctrl + Left Arrow)
             if ((e.ctrlKey || e.metaKey) && e.key === "ArrowLeft") {
-                this._app.editorController.zoomTo(ZOOM_LEVEL / 2);
+                this.handleZoom(1 / 1.5);
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 return;
@@ -305,6 +708,7 @@ export default class PianoRollController {
 
             // Select All (Ctrl + A)
             if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+                this._app.contextMenuController.hide();
                 this.selectAllNotes();
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -333,19 +737,32 @@ export default class PianoRollController {
         this._view.contentContainer.hitArea = new Rectangle(0, 0, 100000, 100000); 
 
         const handleBackgroundClick = (e: FederatedPointerEvent) => {
+            this._app.contextMenuController.hide();
             if (!this._isVisible || !this._track) return;
-            if (e.button !== 0) return; // Only left click
-
             const localPos = this._view.contentContainer.toLocal(e.global);
 
+            // Start selection rectangle on right-click drag
+            if (e.button === 2) {
+                if (!e.shiftKey && !e.ctrlKey) {
+                    // Do not clear selection on right-click down, wait for up or other action
+                }
+                this._isSelecting = true;
+                this._selectionStart.copyFrom(localPos);
+                this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
+                return; 
+            }
+
+            if (e.button !== 0) return; // After this point, only handle left click
+
             if (App.TOOL_MODE === "SELECT") {
-                // Deselect all
+                 // Deselect all on left-click
                 this._selectedNotes.clear();
                 this.redraw();
                 
                 // Start Selection Rectangle
                 this._isSelecting = true;
                 this._selectionStart.copyFrom(localPos);
+                this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
                 return;
             }
 
@@ -390,6 +807,8 @@ export default class PianoRollController {
                         ghost: ghost
                     };
                     
+                    this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
+                    
                     this.previewNote(midiNote);
                 }
             }
@@ -399,6 +818,7 @@ export default class PianoRollController {
         this._view.contentContainer.on("pointerdown", handleBackgroundClick);
 
         this._view.timelineContainer.on("pointerdown", (e: FederatedPointerEvent) => {
+            this._app.contextMenuController.hide();
             if (!this._isVisible || !this._track) return;
             if (e.button !== 0) return;
 
@@ -419,8 +839,9 @@ export default class PianoRollController {
 
         this._view.notesContainer.interactive = true;
         this._view.notesContainer.on("pointerdown", (e: FederatedPointerEvent) => {
+            this._app.contextMenuController.hide();
             if (!this._isVisible || !this._track) return;
-            if (e.button !== 0) return; // Only left click
+            if (e.button !== 0 && e.button !== 2) return; // Allow Left and Right click
 
             e.stopPropagation(); // Stop event from reaching contentContainer/background
 
@@ -429,43 +850,47 @@ export default class PianoRollController {
                 const localPos = target.toLocal(e.global);
                 const width = target.width;
 
-                // Check for resize
+                // Check for resize (Only Left Click)
                 let resizeMode: 'LEFT' | 'RIGHT' | null = null;
-                if (localPos.x < this.RESIZE_ZONE) resizeMode = 'LEFT';
-                else if (localPos.x > width - this.RESIZE_ZONE) resizeMode = 'RIGHT';
+                if (e.button === 0) {
+                    if (localPos.x < this.RESIZE_ZONE) resizeMode = 'LEFT';
+                    else if (localPos.x > width - this.RESIZE_ZONE) resizeMode = 'RIGHT';
 
-                if (resizeMode) {
-                    this._isResizing = true;
-                    e.stopPropagation();
+                    if (resizeMode) {
+                        this._isResizing = true;
+                        e.stopPropagation();
 
-                    // If resizing a selected note, resize all selected notes
-                    // If resizing a non-selected note, only resize that one (and maybe select it?)
-                    if (!this._selectedNotes.has(target.noteData.note)) {
-                        this._selectedNotes.clear();
-                        this._selectedNotes.add(target.noteData.note);
-                        this.redraw();
-                    }
-
-                    // Collect resizing notes
-                    const resizingNotes: any[] = [];
-                    for (const child of this._view.notesContainer.children as any[]) {
-                        if (child.noteData && this._selectedNotes.has(child.noteData.note)) {
-                            resizingNotes.push({
-                                note: child.noteData.note,
-                                region: child.noteData.region,
-                                initialStart: child.noteData.start,
-                                initialDuration: child.noteData.note.duration,
-                                graphic: child
-                            });
+                        // If resizing a selected note, resize all selected notes
+                        // If resizing a non-selected note, only resize that one (and maybe select it?)
+                        if (!this._selectedNotes.has(target.noteData.note)) {
+                            this._selectedNotes.clear();
+                            this._selectedNotes.add(target.noteData.note);
+                            this.redraw();
                         }
-                    }
 
-                    this._resizeState = {
-                        mode: resizeMode,
-                        initialX: e.global.x,
-                        notes: resizingNotes
-                    };
-                    return;
+                        // Collect resizing notes
+                        const resizingNotes: any[] = [];
+                        for (const child of this._view.notesContainer.children as any[]) {
+                            if (child.noteData && this._selectedNotes.has(child.noteData.note)) {
+                                resizingNotes.push({
+                                    note: child.noteData.note,
+                                    region: child.noteData.region,
+                                    initialStart: child.noteData.start,
+                                    initialDuration: child.noteData.note.duration,
+                                    graphic: child
+                                });
+                            }
+                        }
+
+                        this._resizeState = {
+                            mode: resizeMode,
+                            initialX: e.global.x,
+                            initialScrollX: this._view.scrollX,
+                            notes: resizingNotes
+                        };
+                        this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
+                        return;
+                    }
                 }
 
                 // Selection Logic
@@ -475,7 +900,32 @@ export default class PianoRollController {
 
                 let noteToDeselect: MIDINote | null = null;
 
-                if (e.ctrlKey) {
+                if (e.shiftKey && this._lastClickedNote && this._track) {
+                    const start1 = this._lastClickedNote.globalStart;
+                    const note1 = this._lastClickedNote.note.note;
+                    const start2 = clickedGlobalStart;
+                    const note2 = clickedNote.note;
+                    
+                    const minStart = Math.min(start1, start2);
+                    const maxStart = Math.max(start1, start2);
+                    const minNote = Math.min(note1, note2);
+                    const maxNote = Math.max(note1, note2);
+                    
+                    this._selectedNotes.clear();
+                    
+                    for (const region of this._track.regions) {
+                        if (region instanceof MIDIRegion) {
+                            region.midi.forEachNote((note, start) => {
+                                const globalStart = region.start + start;
+                                if (globalStart >= minStart - 0.1 && globalStart <= maxStart + 0.1 &&
+                                    note.note >= minNote && note.note <= maxNote) {
+                                    this._selectedNotes.add(note);
+                                }
+                            });
+                        }
+                    }
+                    this.redraw();
+                } else if (e.ctrlKey) {
                     // Toggle selection
                     if (this._selectedNotes.has(clickedNote)) {
                         // Defer deselection to pointerup (in case we drag)
@@ -484,13 +934,17 @@ export default class PianoRollController {
                         this._selectedNotes.add(clickedNote);
                         this.redraw();
                     }
+                    this._lastClickedNote = { note: clickedNote, globalStart: clickedGlobalStart };
                 } else {
                     if (!this._selectedNotes.has(clickedNote)) {
                         this._selectedNotes.clear();
                         this._selectedNotes.add(clickedNote);
                         this.redraw();
                     }
+                    this._lastClickedNote = { note: clickedNote, globalStart: clickedGlobalStart };
                 }
+                
+                if (e.button !== 0) return; // Only start drag on Left Click
 
                 // Collect all selected notes and their new graphics after redraw
                 const draggedNotes: { note: MIDINote, region: MIDIRegion, initialStart: number, initialNote: number, graphic: any, duration: number }[] = [];
@@ -522,11 +976,14 @@ export default class PianoRollController {
                 this._draggedNote = {
                     initialX: e.global.x,
                     initialY: e.global.y,
+                    initialScrollX: this._view.scrollX,
                     originGlobalStart: originGlobalStart,
                     notes: draggedNotes,
                     noteToDeselect: noteToDeselect,
                     clickedInitialNote: clickedNote.note
                 };
+                
+                this.viewportAnimationLoopId = requestAnimationFrame(this.viewportAnimationLoop.bind(this));
                 
                 this.previewNote(clickedNote.note);
 
@@ -567,6 +1024,9 @@ export default class PianoRollController {
 
         this._view.on("pointermove", (e: FederatedPointerEvent) => {
             if (!this._isVisible || !this._track) return;
+            
+            this._lastMousePos.copyFrom(e.global);
+            this.checkIfScrollingNeeded(e.global.x);
 
             // Update Cursor Style if hovering over notes
             if (!this._isDragging && !this._isResizing && !this._isSelecting && !this._isDraggingPlayhead && !this._creationState) {
@@ -655,8 +1115,9 @@ export default class PianoRollController {
             }
 
             if (this._isResizing && this._resizeState) {
+                const scrollDelta = (this._view.scrollX - this._resizeState.initialScrollX) * RATIO_MILLS_BY_PX;
                 const dx = e.global.x - this._resizeState.initialX;
-                const rawDt = dx * RATIO_MILLS_BY_PX;
+                const rawDt = dx * RATIO_MILLS_BY_PX + scrollDelta;
 
                 for (const item of this._resizeState.notes) {
                     const originalGlobalStart = item.region.start + item.initialStart;
@@ -730,7 +1191,8 @@ export default class PianoRollController {
                 this.previewNote(clampedNote);
 
                 // Time Delta with Relative Snapping
-                const rawDt = dx * RATIO_MILLS_BY_PX;
+                const scrollDelta = (this._view.scrollX - this._draggedNote.initialScrollX) * RATIO_MILLS_BY_PX;
+                const rawDt = dx * RATIO_MILLS_BY_PX + scrollDelta;
                 const originCurrent = this._draggedNote.originGlobalStart + rawDt;
                 
                 // Calculate where the origin note WOULD be snapped
@@ -761,6 +1223,7 @@ export default class PianoRollController {
 
         const handlePointerUp = (e: FederatedPointerEvent) => {
              this.stopPreview();
+             cancelAnimationFrame(this.viewportAnimationLoopId);
 
              if (this._isDraggingPlayhead) {
                  this._isDraggingPlayhead = false;
@@ -803,8 +1266,9 @@ export default class PianoRollController {
              }
 
              if (this._isResizing && this._resizeState) {
+                const scrollDelta = (this._view.scrollX - this._resizeState.initialScrollX) * RATIO_MILLS_BY_PX;
                 const dx = e.global.x - this._resizeState.initialX;
-                const rawDt = dx * RATIO_MILLS_BY_PX;
+                const rawDt = dx * RATIO_MILLS_BY_PX + scrollDelta;
 
                 this.executeWithUndo(() => {
                     const newSelection = new Set<MIDINote>();
@@ -859,10 +1323,11 @@ export default class PianoRollController {
                 const dx = e.global.x - this._draggedNote.initialX;
                 const dy = e.global.y - this._draggedNote.initialY;
                 const isCopy = e.ctrlKey || e.metaKey;
+                const scrollDelta = (this._view.scrollX - this._draggedNote.initialScrollX) * RATIO_MILLS_BY_PX;
                 
-                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5 || Math.abs(scrollDelta) > 5) {
                     // Calculate effective delta (same as pointermove)
-                    const rawDt = dx * RATIO_MILLS_BY_PX;
+                    const rawDt = dx * RATIO_MILLS_BY_PX + scrollDelta;
                     const originCurrent = this._draggedNote.originGlobalStart + rawDt;
                     let originSnappedX = Math.max(0, originCurrent) / RATIO_MILLS_BY_PX;
                     if (!(e.originalEvent as unknown as MouseEvent).shiftKey) {
@@ -962,42 +1427,84 @@ export default class PianoRollController {
         return this._track.regions.map(r => r.clone());
     }
 
-    private restoreRegions(regions: any[]) {
-        if (!this._track) return;
-        
-        // 1. Clear Views
-        const waveform = this._app.editorView.getWaveFormViewById(this._track.id);
+    private restoreTrackState(track: Track, regions: any[]) {
+        const waveform = this._app.editorView.getWaveFormViewById(track.id);
         if (waveform) {
             [...waveform.regionViews].forEach(rv => waveform.removeRegionView(rv));
         }
-
-        // 2. Clear Track Data
-        this._track.regions = [];
-
-        // 3. Re-add regions (creates views and adds to track)
+        track.regions = [];
         regions.forEach(r => {
             const clone = r.clone(); 
-            this._app.regionsController.addRegion(this._track!, clone as RegionOf<any>, waveform);
+            this._app.regionsController.addRegion(track, clone as RegionOf<any>, waveform);
         });
+        track.update(audioCtx);
+        track.modified = true;
+    }
 
-        this._track.update(audioCtx);
-        this._track.modified = true;
-        
-        // Clear selection as note references are now stale
+    private getSelectedNoteSignatures(): Set<string> {
+        const signatures = new Set<string>();
+        if (!this._track) return signatures;
+        for (const region of this._track.regions) {
+            if (region instanceof MIDIRegion) {
+                region.midi.forEachNote((note, start) => {
+                    if (this._selectedNotes.has(note)) {
+                        // Signature: global start time | pitch | duration
+                        const signature = `${(region.start + start).toFixed(2)}|${note.note}|${note.duration.toFixed(2)}`;
+                        signatures.add(signature);
+                    }
+                });
+            }
+        }
+        return signatures;
+    }
+
+    private restoreSelectionFromSignatures(signatures: Set<string>, track: Track) {
         this._selectedNotes.clear();
-        this.redraw();
+        if (!track) return;
+        for (const region of track.regions) {
+            if (region instanceof MIDIRegion) {
+                region.midi.forEachNote((note, start) => {
+                    const signature = `${(region.start + start).toFixed(2)}|${note.note}|${note.duration.toFixed(2)}`;
+                    if (signatures.has(signature)) {
+                        this._selectedNotes.add(note);
+                    }
+                });
+            }
+        }
     }
 
     private executeWithUndo(action: () => void) {
         if (!this._track) return;
-        const before = this.snapshotRegions();
-        action();
-        const after = this.snapshotRegions();
+
+        const trackId = this._track.id;
+        const beforeRegions = this.snapshotRegions();
+        const beforeSignatures = this.getSelectedNoteSignatures();
         
-        this._app.doIt(true, 
-            () => this.restoreRegions(after), 
-            () => this.restoreRegions(before)
-        );
+        action();
+        
+        const afterRegions = this.snapshotRegions();
+        const afterSignatures = this.getSelectedNoteSignatures();
+        
+        const redo = () => {
+            const track = this._app.tracksController.getTrackById(trackId);
+            if (!track) return;
+            this.restoreTrackState(track, afterRegions);
+            if (this._track?.id === trackId) {
+                this.restoreSelectionFromSignatures(afterSignatures, track);
+                this.redraw();
+            }
+        };
+        const undo = () => {
+            const track = this._app.tracksController.getTrackById(trackId);
+            if (!track) return;
+            this.restoreTrackState(track, beforeRegions);
+            if (this._track?.id === trackId) {
+                this.restoreSelectionFromSignatures(beforeSignatures, track);
+                this.redraw();
+            }
+        };
+        
+        this._app.doIt(true, redo, undo);
     }
 
     private addNote(noteVal: number, globalStart: number, duration: number = 500) {
@@ -1017,7 +1524,7 @@ export default class PianoRollController {
         });
     }
 
-    private deleteSelectedNotes() {
+    public deleteSelectedNotes() {
         if (!this._track || this._selectedNotes.size === 0) return;
         
         this.executeWithUndo(() => {
@@ -1039,7 +1546,7 @@ export default class PianoRollController {
         });
     }
 
-    private selectAllNotes() {
+    public selectAllNotes() {
         if (!this._track) return;
         this._selectedNotes.clear();
         
@@ -1054,7 +1561,7 @@ export default class PianoRollController {
         this.redraw();
     }
 
-    private pasteNotes() {
+    public pasteNotes() {
         if (this._clipboard.length === 0 || !this._track) return;
         
         this.executeWithUndo(() => {
@@ -1068,7 +1575,7 @@ export default class PianoRollController {
         });
     }
 
-    private copySelectedNotes() {
+    public copySelectedNotes() {
         this._clipboard = [];
         let minStart = Infinity;
         
@@ -1100,7 +1607,7 @@ export default class PianoRollController {
         }
     }
 
-    private cutSelectedNotes() {
+    public cutSelectedNotes() {
         this.copySelectedNotes();
         this.deleteSelectedNotes();
     }

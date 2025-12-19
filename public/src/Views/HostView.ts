@@ -3,6 +3,7 @@ import TempoElement from "../Components/TempoElement";
 import TimeSignatureElement from "../Components/TimeSignatureElement";
 import AudioLoopBrowser from "../Components/WamAudioLoopBrowser";
 import { RATIO_MILLS_BY_PX } from "../Env";
+import { t } from "../Utils/i18n";
 
 /**
  * Class responsible for the host view. It displays the host controls and the host track.
@@ -22,7 +23,6 @@ export default class HostView {
     soundLoopBtn = document.getElementById("soundLoupBtn") as HTMLElement;
 
     toolBtn = document.getElementById("tool-btn") as HTMLDivElement;
-    toolBtnArrow = document.getElementById("tool-btn-arrow") as HTMLButtonElement;
     toolMenu = document.getElementById("tool-menu") as HTMLDivElement;
     toolSelectBtn = document.getElementById("tool-select") as HTMLAnchorElement;
     toolPenBtn = document.getElementById("tool-pen") as HTMLAnchorElement;
@@ -107,11 +107,11 @@ export default class HostView {
         let tooltip = this.metroBtn.firstElementChild as HTMLSpanElement;
         if(metronomeOn){
             this.metroBtn.style.backgroundColor = "black";
-            tooltip.textContent = "Metronome On";
+            tooltip.textContent = t("tooltip.metronome_on");
         }
         else{
             this.metroBtn.style.backgroundColor = "";
-            tooltip.textContent = "Metronome Off";
+            tooltip.textContent = t("tooltip.metronome_off");
         }
     }
 
@@ -155,14 +155,14 @@ export default class HostView {
         if (playing) {
             if (recording) {
                 this.playIcon.className = "stop-icon";
-                tooltip.innerHTML = "Stop";
+                tooltip.innerHTML = t("tooltip.stop");
             } else {
                 this.playIcon.className = "pause-icon";
-                tooltip.innerHTML = "Pause";
+                tooltip.innerHTML = t("tooltip.pause");
             }
         } else {
             this.playIcon.className = "play-icon";
-            tooltip.innerHTML = "Play";
+            tooltip.innerHTML = t("tooltip.play");
         }
     }
 
@@ -176,11 +176,11 @@ export default class HostView {
 
         if (looping) {
             this.loopBtn.style.background = "black";
-            tooltip.innerHTML = "Turn&nbsp;off&nbsp;looping";
+            tooltip.innerHTML = t("tooltip.turn_off_loop");
         }
         else {
             this.loopBtn.style.background = "";
-            tooltip.innerHTML = "Loop";
+            tooltip.innerHTML = t("tooltip.loop");
         }
     }
 
@@ -194,11 +194,11 @@ export default class HostView {
 
         if (recording) {
             this.recordBtn.style.background = "black";
-            tooltip.innerHTML = "Stop&nbsp;recording";
+            tooltip.innerHTML = t("tooltip.stop_recording");
         }
         else {
             this.recordBtn.style.background = "";
-            tooltip.innerHTML = "Record";
+            tooltip.innerHTML = t("tooltip.record");
         }
     }
 
@@ -212,10 +212,10 @@ export default class HostView {
 
         if (muted) {
             this.muteIcon.className = "volume-off-icon";
-            tooltip.innerHTML = "Unmute";
+            tooltip.innerHTML = t("tooltip.unmute");
         } else {
             this.muteIcon.className = "volume-up-icon";
-            tooltip.innerHTML = "Mute";
+            tooltip.innerHTML = t("tooltip.mute");
         }
     }
     public updateSnapButton(snapGrid: boolean): void {
@@ -223,10 +223,10 @@ export default class HostView {
 
         if (snapGrid) {
             this.snapIcon.className = "snap-icon";
-            tooltip.innerHTML = "Snap Grid Off";
+            tooltip.innerHTML = t("tooltip.snap_grid_off");
         } else {
             this.snapIcon.className = "snap-icon-off";
-            tooltip.innerHTML = "Snap Grid On";
+            tooltip.innerHTML = t("tooltip.snap_grid_on");
         }
     }
 

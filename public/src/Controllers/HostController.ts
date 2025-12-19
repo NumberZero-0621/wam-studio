@@ -77,12 +77,6 @@ export default class HostController {
   public play(): void {
     const host=this._app.host
     if (!host.isPlaying) {
-      // disable zoom buttons when playing (this confuses the player in this version)
-      this._view.zoomInBtn.classList.remove("zoom-enabled");
-      this._view.zoomOutBtn.classList.remove("zoom-enabled");
-      this._view.zoomInBtn.classList.add("zoom-disabled");
-      this._view.zoomOutBtn.classList.add("zoom-disabled");
-
       this._app.automationController.applyAllAutomations();
       if (host.modified){
         host.update(audioCtx)
@@ -101,12 +95,6 @@ export default class HostController {
   stop(){
     const host= this._app.host
     if(host.isPlaying){
-      // enable zoom buttons when playing is stopped
-      this._view.zoomInBtn.classList.remove("zoom-disabled")
-      this._view.zoomOutBtn.classList.remove("zoom-disabled")
-      this._view.zoomInBtn.classList.add("zoom-enabled")
-      this._view.zoomOutBtn.classList.add("zoom-enabled")
-
       this._app.tracksController.tracks.forEach((track) => {
         if (track.plugin && track.plugin.instance) track.plugin.instance?.audioNode?.clearEvents()
       })
@@ -321,7 +309,6 @@ export default class HostController {
         this._view.toolMenu.style.display = display === "none" ? "block" : "none";
     };
     this._view.toolBtn.addEventListener("click", toggleToolMenu);
-    this._view.toolBtnArrow.addEventListener("click", toggleToolMenu);
 
     this._view.toolSelectBtn.addEventListener("click", () => {
         App.TOOL_MODE = "SELECT";
@@ -338,8 +325,7 @@ export default class HostController {
     // Hide tool menu on outside click
     window.addEventListener("click", (e) => {
         if (!this._view.toolMenu.contains(e.target as Node) && 
-            !this._view.toolBtn.contains(e.target as Node) && 
-            !this._view.toolBtnArrow.contains(e.target as Node)) {
+            !this._view.toolBtn.contains(e.target as Node)) {
             this._view.toolMenu.style.display = "none";
         }
     });
@@ -368,6 +354,7 @@ export default class HostController {
             this._app.undoManager.undo();
             break;
           case "Z":
+          case "y":
             this._app.undoManager.redo();
             break;
         }
@@ -391,10 +378,17 @@ export default class HostController {
 
     // ZOOM BUTTONS
     this._view.zoomInBtn.addEventListener("click", async () => {
-      this._app.editorController.zoomTo(ZOOM_LEVEL*2);
+      this._app.editorController.zoomTo(ZOOM_LEVEL*1.5);
     });
     this._view.zoomOutBtn.addEventListener("click", async () => {
-      this._app.editorController.zoomTo(ZOOM_LEVEL/2);
+      this._app.editorController.zoomTo(ZOOM_LEVEL/1.5);
+    });
+
+    // ZOOM INPUT
+    this._app.editorView.spanZoomLevel.addEventListener("change", () => {
+        let val = parseFloat(this._app.editorView.spanZoomLevel.value);
+        if (isNaN(val)) val = 1;
+        this._app.editorController.zoomTo(val);
     });
 
     // Tempo and Time Signature selectors

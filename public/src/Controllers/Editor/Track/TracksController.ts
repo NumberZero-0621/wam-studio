@@ -262,18 +262,6 @@ export default class TracksController{
           },5000)
         })()
       }
-      //TODO Remove this debug code
-      if(e!=="a")return
-
-      console.log(...this.tracks)
-      let toptrack=this.tracks.find((v,i)=>i===0)!
-      let bottomtrack=this.tracks.find((v,i)=>i===1)!
-
-      let merged: RegionOf<any>|null=null
-      for(const m of toptrack?.merged_regions.values())merged=m[0]
-      if(!merged)return
-
-      this._app.regionsController.addRegion(bottomtrack,merged.clone())
     })
 
     this._view.newTrackDiv.addEventListener("click", () => {

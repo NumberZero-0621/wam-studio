@@ -36,38 +36,38 @@
 				<i class="menu-icon"></i>
 			</a>
 			<div class="dropdown-menu dropright" aria-labelledby="dropdownMenuButton">
-				<a class="dropdown-item dropdown-toggle"  type="button" id="dropdownSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Select Demo Project</a>
+				<a class="dropdown-item dropdown-toggle"  type="button" id="dropdownSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.select_demo">Select Demo Project</a>
 				<div id="songs-container" class="dropdown-menu songs" aria-labelledby="dropdownSubMenuButton"></div>
 
 				<div class="dropdown-divider"></div>
 
-				<a class="dropdown-item" id="load-project">Load project</a>
-				<a class="dropdown-item" id="save-project">Save project</a>
-				<a class="dropdown-item" id="export-project" >Render/Export project</a>
+				<a class="dropdown-item" id="load-project" data-i18n="menu.load_project">Load project</a>
+				<a class="dropdown-item" id="save-project" data-i18n="menu.save_project">Save project</a>
+				<a class="dropdown-item" id="export-project" data-i18n="menu.export_project">Render/Export project</a>
 
 				<div class="dropdown-divider"></div>
 
-				<a class="dropdown-item" id="import-songs" >Import audio file(s)</a>
+				<a class="dropdown-item" id="import-songs" data-i18n="menu.import_audio">Import audio file(s)</a>
 				<input id="new-track-input" type="file" accept=".mp3, .wav, .ogg" multiple style="display: none">
 
 				<div class="dropdown-divider advanced"></div>
 
-				<a class="dropdown-item" id="keyboard-shortcuts-btn">Keyboard shortcuts</a>
+				<a class="dropdown-item" id="keyboard-shortcuts-btn" data-i18n="menu.keyboard_shortcuts">Keyboard shortcuts</a>
 
 				<div class="dropdown-divider advanced"></div>
 
-				<a class="dropdown-item" id="latency-btn">Calibrate latency compensation</a>
-				<a class="dropdown-item" id="settings-btn">Settings</a>
+				<a class="dropdown-item" id="latency-btn" data-i18n="menu.calibrate_latency">Calibrate latency compensation</a>
+				<a class="dropdown-item" id="settings-btn" data-i18n="menu.settings">Settings</a>
 
 				<div class="dropdown-divider advanced"></div>
 
-				<a class="dropdown-item" id="login">Log in</a>
+				<a class="dropdown-item" id="login" data-i18n="menu.login">Log in</a>
 
 				<div class="dropdown-divider advanced"></div>
 
-				<a class="dropdown-item" id="playground-btn">Playground</a>
+				<a class="dropdown-item" id="playground-btn" data-i18n="menu.playground">Playground</a>
 
-				<a class="dropdown-item" id="about-btn">About</a>
+				<a class="dropdown-item" id="about-btn" data-i18n="menu.about">About</a>
 			</div>
 
 			<div id="back-btn" class="menu-item">
@@ -99,62 +99,61 @@
 			</div>
             <div id="tool-wrapper" style="position: relative; display: flex; align-items: center; height: 100%;">
                 <div id="tool-btn" class="menu-item" style="height: 100%;">
-                    <span class="mytooltip">Tool Mode</span>
-                    <i class="bi bi-cursor-fill" id="tool-icon" style="font-size: 20px; color: #d3d3d3;"></i>
+                    <span class="mytooltip" data-i18n="tooltip.tool_mode">Tool Mode</span>
+                    <i class="bi bi-cursor-fill" id="tool-icon" style="font-size: 30px; margin-bottom: 4px; color: #d3d3d3;"></i>
                 </div>
-                <button id="tool-btn-arrow" class="metro-btn-arrow" style="margin-left: -20px; z-index: 10;">▼</button>
                 <div id="tool-menu" class="dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 150px;">
-                    <a class="dropdown-item" id="tool-select"><i class="bi bi-cursor-fill"></i> Select Mode</a>
-                    <a class="dropdown-item" id="tool-pen"><i class="bi bi-pencil-fill"></i> Pen Mode</a>
+                    <a class="dropdown-item" id="tool-select" data-i18n="tool.select"><i class="bi bi-cursor-fill"></i> Select Mode</a>
+                    <a class="dropdown-item" id="tool-pen" data-i18n="tool.pen"><i class="bi bi-pencil-fill"></i> Pen Mode</a>
                 </div>
             </div>
 			<div id="metro-btn" class="menu-item">
-				<span class="mytooltip">Metronome</span>
-				<i class="metro-icon"></i>
+				<span class="mytooltip" data-i18n="tooltip.metronome">Metronome</span>
+				<i class="metro-icon" style="width: 36px"></i>
 			</div>
 			<button id="metro-btn-arrow" class="metro-btn-arrow" style="margin-left: -20px; z-index: 10;">▼</button>
 			<div id="metronome"></div>
 			<div id="mute-btn" class="menu-item">
-				<span class="mytooltip">Mute</span>
-				<i class="volume-up-icon" style="width: 30px" id="mute-icon"></i>
+				<span class="mytooltip" data-i18n="tooltip.mute">Mute</span>
+				<i class="volume-up-icon" style="width: 36px" id="mute-icon"></i>
 			</div>
             <div id="snap-wrapper" style="position: relative; display: flex; align-items: center; height: 100%;">
                 <div id="snap-btn" class="menu-item" style="height: 100%;">
-                    <span class="mytooltip">Snap grid</span>
+                    <span class="mytooltip" data-i18n="tooltip.snap_grid">Snap grid</span>
                     <i class="snap-icon" style="width: 30px" id="snap-icon"></i>
                 </div>
                 <button id="snap-btn-arrow" class="metro-btn-arrow" style="margin-left: -20px; z-index: 10;">▼</button>
                 <div id="snap-menu" class="dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; z-index: 1000; min-width: 180px; background-color: #222; border: 1px solid #444;">
-                    <a class="dropdown-item" id="snap-1-1" style="color: #eee; cursor: pointer;">1/1 (Bar)</a>
-                    <a class="dropdown-item" id="snap-1-2" style="color: #eee; cursor: pointer;">1/2 (Half)</a>
-                    <a class="dropdown-item" id="snap-1-4" style="color: #eee; cursor: pointer;">1/4 (Quarter) <span style="float:right">✓</span></a>
-                    <a class="dropdown-item" id="snap-1-8" style="color: #eee; cursor: pointer;">1/8 (Eighth)</a>
-                    <a class="dropdown-item" id="snap-1-16" style="color: #eee; cursor: pointer;">1/16 (Sixteenth)</a>
-                    <a class="dropdown-item" id="snap-1-32" style="color: #eee; cursor: pointer;">1/32 (Thirty-second)</a>
+                    <a class="dropdown-item" id="snap-1-1" style="color: #eee; cursor: pointer;" data-i18n="snap.bar">1/1 (Bar)</a>
+                    <a class="dropdown-item" id="snap-1-2" style="color: #eee; cursor: pointer;" data-i18n="snap.half">1/2 (Half)</a>
+                    <a class="dropdown-item" id="snap-1-4" style="color: #eee; cursor: pointer;" data-i18n="snap.quarter">1/4 (Quarter) <span style="float:right">✓</span></a>
+                    <a class="dropdown-item" id="snap-1-8" style="color: #eee; cursor: pointer;" data-i18n="snap.eighth">1/8 (Eighth)</a>
+                    <a class="dropdown-item" id="snap-1-16" style="color: #eee; cursor: pointer;" data-i18n="snap.sixteenth">1/16 (Sixteenth)</a>
+                    <a class="dropdown-item" id="snap-1-32" style="color: #eee; cursor: pointer;" data-i18n="snap.thirtysecond">1/32 (Thirty-second)</a>
                     <div class="dropdown-divider" style="border-top: 1px solid #444;"></div>
-                    <a class="dropdown-item" id="snap-triplet" style="color: #eee; cursor: pointer;">Triplet Mode <span id="snap-triplet-check" style="float: right; display: none;">✓</span></a>
+                    <a class="dropdown-item" id="snap-triplet" style="color: #eee; cursor: pointer;" data-i18n="snap.triplet">Triplet Mode <span id="snap-triplet-check" style="float: right; display: none;">✓</span></a>
                 </div>
             </div>
 			<div id="split-btn" class="menu-item">
-				<span class="mytooltip">Split region (S)</span>
+				<span class="mytooltip" data-i18n="tooltip.split">Split region (S)</span>
 				<i class="split-icon" style="width: 30px" id="split-icon"></i>
 			</div>
 			<div id="merge-btn" class="menu-item">
-				<span class="mytooltip">Merge region (M)</span>
+				<span class="mytooltip" data-i18n="tooltip.merge">Merge region (M)</span>
 				<i class="merge-icon" style="width: 30px" id="merge-icon"></i>
 			</div>
 
 			<div id="undo-btn" class="menu-item">
-				<span class="mytooltip">Undo</span>
+				<span class="mytooltip" data-i18n="tooltip.undo">Undo</span>
 				<i class="undo-icon-off" style="width: 30px" id="undo-icon"></i>
 			</div>
 			<div id="redo-btn" class="menu-item">
-				<span class="mytooltip">Redo</span>
+				<span class="mytooltip" data-i18n="tooltip.redo">Redo</span>
 				<i class="redo-icon-off" style="width: 30px" id="redo-icon"></i>
 			</div>
 		</div>
 		<div id="right-controls">
-			<div id="spanZoomLevel">1x</div>
+			<input id="spanZoomLevel" type="number" min="0.13" max="16" step="0.1" value="1.00" style="width: 80px; font-size: 1.2em; background: transparent; color: #d3d3d3; border: 1px solid #555; border-radius: 4px; text-align: center; margin-right: 10px;">
 			<div id="zoom-out-btn" class="menu-item">
 				<span class="mytooltip">Zoom out</span>
 				<i class="zoom-out" style="width: 30px"></i>
@@ -174,7 +173,7 @@
 					<div class="icon">
 						<i class="music-file-icon"></i>
 					</div>
-					<div class="text-icon">
+					<div class="text-icon" data-i18n="header.tracks">
 						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TRACKS
 					</div>
 				</div>
@@ -182,7 +181,7 @@
 
 
 				<div id="new-track" class="new-track">
-					<div class="new-track-text">
+					<div class="new-track-text" data-i18n="header.new_track">
 						New track
 					</div>
 					<div class="icon">
@@ -211,7 +210,7 @@
 					<div class="icon">
 						<i class="sliders-icon"></i>
 					</div>
-					<div class="text-icon">
+					<div class="text-icon" data-i18n="header.master_track">
 						MASTER TRACK
 					</div>
 				</div>
@@ -219,7 +218,7 @@
 				<div class="icon">
 					<i class="plugin-icon"></i>
 				</div>
-				<div class="text-icon">
+				<div class="text-icon" data-i18n="header.plugins">
 					PLUGINS
 				</div>
 
@@ -289,12 +288,12 @@
 
 	<div id="latency-window" class="floating-window" hidden>
 		<div id="latency-header" class="header-window">
-			<span class="title">Latency Compensation</span>
+			<span class="title" data-i18n="window.latency">Latency Compensation</span>
 			<button id="latency-close-button" class="close-button">X</button>
 		</div>
 		<div class="settings-body">
 			<div class="settings-item">
-				<button id="calibration-button" type="button">Calibrate Latency</button>
+				<button id="calibration-button" type="button" data-i18n="window.calibrate">Calibrate Latency</button>
 			</div>
 			<div class="settings-tiny-item-text">
 				Approach a Microphone near speakers, lower volume first, then press the button above.
@@ -327,23 +326,31 @@
 
 	<div id="settings-window" class="floating-window" hidden>
 		<div id="settings-header" class="header-window">
-			<span class="title">Settings</span>
+			<span class="title" data-i18n="settings.title">Settings</span>
 			<button id="settings-close-button" class="close-button">X</button>
 		</div>
 		<div class="settings-body">
 			<div class="settings-item">
-				<label for="select-input-device">Input Device</label>
+				<label for="select-input-device" data-i18n="settings.input_device">Input Device</label>
 				<select class="select-input" id="select-input-device"></select>
 			</div>
 			<br>
 			<div class="settings-item">
-				<label for="select-output-device">Output Device</label>
+				<label for="select-output-device" data-i18n="settings.output_device">Output Device</label>
 				<select class="select-input" id="select-output-device"></select>
 			</div>
 			<br>
 			<div class="settings-item">
-				<label for="select-midi-input-device">MIDI Device</label>
+				<label for="select-midi-input-device" data-i18n="settings.midi_device">MIDI Device</label>
 				<select class="select-input" id="select-midi-input-device"></select>
+			</div>
+			<br>
+			<div class="settings-item">
+				<label for="select-language" data-i18n="settings.language">Language</label>
+				<select class="select-input" id="select-language">
+					<option value="en">English</option>
+					<option value="ja">日本語</option>
+				</select>
 			</div>
 		</div>
 	</div>
