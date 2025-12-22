@@ -36,19 +36,48 @@
 				<i class="menu-icon"></i>
 			</a>
 			<div class="dropdown-menu dropright" aria-labelledby="dropdownMenuButton">
-				<a class="dropdown-item dropdown-toggle"  type="button" id="dropdownSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.select_demo">Select Demo Project</a>
-				<div id="songs-container" class="dropdown-menu songs" aria-labelledby="dropdownSubMenuButton"></div>
+				<div class="dropright">
+					<a class="dropdown-item dropdown-toggle"  type="button" id="dropdownSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.select_demo">Select Demo Project</a>
+					<div id="songs-container" class="dropdown-menu songs" aria-labelledby="dropdownSubMenuButton"></div>
+				</div>
 
 				<div class="dropdown-divider"></div>
 
-				<a class="dropdown-item" id="load-project" data-i18n="menu.load_project">Load project</a>
-				<a class="dropdown-item" id="save-project" data-i18n="menu.save_project">Save project</a>
-				<a class="dropdown-item" id="export-project" data-i18n="menu.export_project">Render/Export project</a>
+				<div class="dropright">
+					<a class="dropdown-item dropdown-toggle" type="button" id="loadProjectSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.load_project">Load project</a>
+					<div class="dropdown-menu" aria-labelledby="loadProjectSubMenuButton">
+						<a class="dropdown-item" id="load-project" data-i18n="menu.load_wam">WAM-Studio</a>
+						<a class="dropdown-item" id="load-dawproject" data-i18n="menu.load_dawproject">dawproject</a>
+					</div>
+				</div>
+				<div class="dropright">
+					<a class="dropdown-item dropdown-toggle" type="button" id="saveProjectSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.save_project">Save project</a>
+					<div class="dropdown-menu" aria-labelledby="saveProjectSubMenuButton">
+						<a class="dropdown-item" id="save-project" data-i18n="menu.save_wam">WAM-Studio</a>
+						<a class="dropdown-item" id="save-dawproject" data-i18n="menu.save_dawproject">dawproject</a>
+					</div>
+				</div>
+				
+				<div class="dropright">
+					<a class="dropdown-item dropdown-toggle" type="button" id="exportSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.export_project">Render/Export project</a>
+					<div class="dropdown-menu" aria-labelledby="exportSubMenuButton">
+						<a class="dropdown-item" id="export-project" data-i18n="menu.export_audio">Audio</a>
+						<a class="dropdown-item" id="export-midi" data-i18n="menu.export_midi">MIDI</a>
+					</div>
+				</div>
 
 				<div class="dropdown-divider"></div>
 
-				<a class="dropdown-item" id="import-songs" data-i18n="menu.import_audio">Import audio file(s)</a>
+				<div class="dropright">
+					<a class="dropdown-item dropdown-toggle" type="button" id="importSubMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-i18n="menu.import">Import</a>
+					<div class="dropdown-menu" aria-labelledby="importSubMenuButton">
+						<a class="dropdown-item" id="import-songs" data-i18n="menu.import_audio">Audio file(s)</a>
+						<a class="dropdown-item" id="import-midi-btn" data-i18n="menu.import_midi">MIDI file</a>
+					</div>
+				</div>
 				<input id="new-track-input" type="file" accept=".mp3, .wav, .ogg" multiple style="display: none">
+				<input id="new-midi-track-input" type="file" accept=".mid, .midi" multiple style="display: none">
+				<input id="dawproject-input" type="file" accept=".dawproject" style="display: none">
 
 				<div class="dropdown-divider advanced"></div>
 

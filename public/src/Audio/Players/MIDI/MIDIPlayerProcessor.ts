@@ -72,7 +72,8 @@ export function getMIDIPlayerProcessor(moduleId:string){
 
         _prepareProcessing(duration: number): boolean{
             if(!this.instants)return false
-            const startInstant= Math.max(Math.floor(this.playhead/this.instant_duration), 0)
+            return true
+            /*const startInstant= Math.max(Math.floor(this.playhead/this.instant_duration), 0)
             const endInstant= Math.min(Math.floor((this.playhead+duration)/this.instant_duration), this.instants.length-1)
             const endTime= this.playhead+duration
             for(let i=startInstant; i<=endInstant; i++){
@@ -85,14 +86,14 @@ export function getMIDIPlayerProcessor(moduleId:string){
                     this.current_channel++
                     if(this.current_channel>=16)this.current_channel=0*/
                     // TODO I add a negative offset to the note end because icannot use channel because some WAM don't work if I do.
-                    this.emitEvents(
+/*                    this.emitEvents(
                         { type: 'wam-midi', time: currentTime+start, data: { bytes: new Uint8Array([0x90 | this.current_channel, note.note, note.velocity*100]) } },
                         { type: 'wam-midi', time: currentTime+start+note.duration/1000-0.0001, data: { bytes: new Uint8Array([0x90 | this.current_channel, note.note, 0]) } },
                         { type: 'wam-midi', time: currentTime+start+note.duration/1000-0.0001, data: { bytes: new Uint8Array([0x80 | this.current_channel, note.note, note.velocity*100]) } },
                     );
                 }
             }
-            return false
+            return false*/
         }
 
         _connectEvents(...args: any[]){

@@ -6,6 +6,9 @@ import TracksView from "../../../Views/TracksView";
 import { audioCtx } from "../../../index";
 
 import WebAudioPeakMeter from "../../../Audio/Utils/PeakMeter";
+import MIDIRegion from "../../../Models/Region/MIDIRegion";
+import { MIDI } from "../../../Audio/MIDI/MIDI";
+import { parseMidiFile } from "../../../Audio/MIDI/MIDIImport";
 import { RegionOf } from "../../../Models/Region/Region";
 import SampleRegion from "../../../Models/Region/SampleRegion";
 import SoundProvider from "../../../Models/Track/SoundProvider";
@@ -228,6 +231,47 @@ export default class TracksController{
       // Finish the progress
       track.element.progressDone();
       return track;
+    } else {
+      console.warn("File type not supported");
+      return undefined;
+    }
+  }
+
+  /**
+   * Creates the track with the given midi file.
+   *
+   * @param file - The file to create the track.
+   */
+  public async createTrackWithMidiFile(file: File): Promise<Track[] | undefined> {
+    if (file.name.endsWith(".mid") || file.name.endsWith(".midi") || file.type === "audio/midi" || file.type === "audio/x-midi") {
+      
+      try {
+        // Load the file
+        let arrayBuffer = await file.arrayBuffer();
+        let importedTracks = await parseMidiFile(arrayBuffer);
+        
+        const createdTracks: Track[] = [];
+
+        if (importedTracks.length === 0) {
+             console.warn("No tracks found in MIDI file");
+             return undefined;
+        }
+
+        for (const imported of importedTracks) {
+            // Create the track
+            let track = await this.createEmptyTrack();
+            track.element.name = imported.name || file.name;
+            
+            this._app.regionsController.addRegion(track, new MIDIRegion(imported.midi, 0));
+            createdTracks.push(track);
+        }
+        
+        return createdTracks;
+
+      } catch (e) {
+         console.warn("Failed to parse MIDI file", e);
+         return undefined;
+      }
     } else {
       console.warn("File type not supported");
       return undefined;

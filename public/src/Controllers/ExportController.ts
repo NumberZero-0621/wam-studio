@@ -1,10 +1,11 @@
 import { initializeWamHost } from "@webaudiomodules/sdk";
 import App from "../App";
-import { bufferToWave, downloadBlob } from "../Audio/Utils/audioBufferToWave";
+import { bufferToWave, downloadBlob, downloadBlobWithPicker } from "../Audio/Utils/audioBufferToWave";
 import { PluginInstance } from "../Models/Plugin";
 import Track from "../Models/Track/Track";
 import { audioCtx } from "../index";
 import AutomationController from "./AutomationController";
+import { exportToMidi } from "../Audio/MIDI/MIDIExport";
 
 /**
  * Controller class that binds the events of the exporter.
@@ -18,6 +19,42 @@ export default class ExporterController {
 
     constructor(app: App) {
         this._app = app;
+    }
+
+    /**
+     * Exports the project to MIDI files.
+     *
+     * @param masterTrack - If true, it will export all tracks into one MIDI file.
+     * @param tracksIds - List of tracks ID to export individually.
+     * @param name - Name of the project that will prefix the name of the files.
+     */
+    public async exportMidi(masterTrack: boolean, tracksIds: number[], name: string): Promise<void> {
+        if (!masterTrack && tracksIds.length === 0) return;
+        if (name == "") name = "project";
+
+        const midiType = [{
+            description: 'MIDI File',
+            accept: { 'audio/midi': ['.mid'] }
+        }];
+
+        // Export Individual Tracks
+        for (let trackId of tracksIds) {
+            const track = this._app.tracksController.getTrackById(trackId);
+            if (track) {
+                // Export single track
+                const midiBytes = exportToMidi([track]);
+                const blob = new Blob([midiBytes], { type: 'audio/midi' });
+                await downloadBlobWithPicker(blob, `${name}_track_${track.element.name}.mid`, midiType);
+            }
+        }
+
+        // Export Master Track (All Tracks)
+        if (masterTrack) {
+            const allTracks = [...this._app.tracksController.tracks];
+            const midiBytes = exportToMidi(allTracks);
+            const blob = new Blob([midiBytes], { type: 'audio/midi' });
+            await downloadBlobWithPicker(blob, `${name}_master.mid`, midiType);
+        }
     }
 
     /**
@@ -51,7 +88,7 @@ export default class ExporterController {
             let buffer = await this.processTrack(track, maxDuration, initializeWamHost);
             if (buffer) buffers.push(buffer);
             if (tracksIds.includes(track.id)) {
-                this.exportTrackBuffer(buffer, `${name}_track_${track.element.name}.wav`);
+                await this.exportTrackBuffer(buffer, `${name}_track_${track.element.name}.wav`);
             }
         }
 
@@ -151,7 +188,7 @@ export default class ExporterController {
         // Clean up everything.
         await graph.dispose()
 
-        this.exportTrackBuffer(renderedBuffer, `${name}_master.wav`);
+        await this.exportTrackBuffer(renderedBuffer, `${name}_master.wav`);
     }
 
     /**
@@ -161,9 +198,13 @@ export default class ExporterController {
      * @param fileName - Name of the file.
      * @private
      */
-    private exportTrackBuffer(buffer: AudioBuffer, fileName: string): void {
+    private async exportTrackBuffer(buffer: AudioBuffer, fileName: string): Promise<void> {
         let blob = bufferToWave(buffer);
-        downloadBlob(blob, fileName);
+        const wavType = [{
+            description: 'WAV File',
+            accept: { 'audio/wav': ['.wav'] }
+        }];
+        await downloadBlobWithPicker(blob, fileName, wavType);
     }
 
 

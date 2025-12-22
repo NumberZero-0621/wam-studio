@@ -68,13 +68,19 @@ export default class HostView {
 
     // Menu buttons
     importSongs = document.getElementById("import-songs") as HTMLInputElement
+    importMidi = document.getElementById("import-midi-btn") as HTMLInputElement
     newTrackInput: HTMLInputElement = document.getElementById("new-track-input") as HTMLInputElement
+    newMidiTrackInput: HTMLInputElement = document.getElementById("new-midi-track-input") as HTMLInputElement
     latencyBtn = document.getElementById("latency-btn") as HTMLDivElement
     settingsBtn = document.getElementById("settings-btn") as HTMLDivElement
     saveBtn = document.getElementById("save-project") as HTMLDivElement
+    saveDawProjectBtn = document.getElementById("save-dawproject") as HTMLDivElement
     loadBtn = document.getElementById("load-project") as HTMLDivElement
+    loadDawProjectBtn = document.getElementById("load-dawproject") as HTMLDivElement
+    dawprojectInput = document.getElementById("dawproject-input") as HTMLInputElement
     loginBtn = document.getElementById("login") as HTMLDivElement
     exportProject = document.getElementById("export-project") as HTMLInputElement
+    exportMidi = document.getElementById("export-midi") as HTMLInputElement
 
     aboutBtn = document.getElementById("about-btn") as HTMLDivElement
     aboutCloseBtn = document.getElementById("about-close-button") as HTMLDivElement

@@ -228,15 +228,14 @@ export default class EditorController {
             }
             else{ // Scroll
                 //console.log("Detected horizontal scroll with two fingers");
-                console.log("Horizontal scroll distance: ", e.deltaX);
-                console.log("Vertical scroll distance: ", e.deltaY);
+                // console.log("Horizontal scroll distance: ", e.deltaX);
+                // console.log("Vertical scroll distance: ", e.deltaY);
 
                 // MB changed e.deltaY to e.deltaX
                 this._view.playhead.viewportLeft+= this._view.playhead.viewportWidth * e.deltaX / 2000
-                // scroll vertically, use e.deltaY to initiate the scroll options.
-               
-
-                //this._view.verticalScrollbar.customScrollIncremental(e.deltaY);
+                
+                // Scroll vertically
+                this._view.verticalScrollbar.customScrollBy(e.deltaY);
             }
 
             

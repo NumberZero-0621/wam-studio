@@ -23,6 +23,7 @@ export default class ProjectController {
 
     private currentUsername: string = "";
     private currentProjectName: string = "";
+    private currentExportMode: 'AUDIO' | 'MIDI' = 'AUDIO';
 
     constructor(app: App) {
         this._app = app;
@@ -61,8 +62,10 @@ export default class ProjectController {
     /**
      * Mounts the project window and shows the export project view.
      * Binds the export project events.
+     * @param mode The export mode ('AUDIO' or 'MIDI').
      */
-    public openExportWindow(): void {
+    public openExportWindow(mode: 'AUDIO' | 'MIDI' = 'AUDIO'): void {
+        this.currentExportMode = mode;
         this._view.mountExport();
         this.bindExportEvents();
         this._view.show();
@@ -119,16 +122,24 @@ export default class ProjectController {
      */
     private bindExportEvents(): void {
         let exportElement = this._view.exportElement;
+        // Re-bind click event to handle mode changes if already initialized? 
+        // Or just check mode inside the callback.
+        // Since initialized is persistent, we must ensure the callback uses currentExportMode.
         if (!exportElement.initialized) {
             exportElement.initialized = true;
             exportElement.exportBtn.addEventListener("click", async () => {
                 let trackIds = exportElement.getSelectedTracks();
                 let masterTrack = exportElement.isMasterTrackSelected();
                 let name = exportElement.nameInput.value;
-                await this._app.exportController.exportSongs(masterTrack, trackIds, name);
+                
+                if (this.currentExportMode === 'MIDI') {
+                    await this._app.exportController.exportMidi(masterTrack, trackIds, name);
+                } else {
+                    await this._app.exportController.exportSongs(masterTrack, trackIds, name);
+                }
             });
         }
-        exportElement.setTitle("export project");
+        exportElement.setTitle(this.currentExportMode === 'MIDI' ? "export MIDI" : "export audio");
         exportElement.update([...this._app.tracksController.tracks]);
     }
 

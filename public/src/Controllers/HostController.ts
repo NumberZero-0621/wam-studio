@@ -6,6 +6,7 @@ import { setTempo, SONGS_FILE_URL, ZOOM_LEVEL } from "../Env";
 import DraggableWindow from "../Utils/DraggableWindow";
 import HostView from "../Views/HostView";
 import { audioCtx } from "../index";
+import JSZip from "jszip";
 
 /**
  * Class to control the audio. It contains all the listeners for the audio controls.
@@ -191,6 +192,61 @@ export default class HostController {
         }
       }
     }
+  }
+
+  /**
+   * Handles the import of MIDI files.
+   *
+   * @param e - Input event of the file input.
+   */
+  public importMidiFiles(e: InputEvent): void {
+    const target = e.target as HTMLInputElement;
+
+    if (target.files) {
+      for (let i = 0; i < target.files.length; i++) {
+        let file = target.files[i];
+        if (file !== undefined) {
+          this._app.tracksController.createTrackWithMidiFile(file);
+        }
+      }
+    }
+  }
+
+  /**
+   * Handles the loading of .dawproject files.
+   *
+   * @param e - Input event of the file input.
+   */
+  public async loadDawProject(e: InputEvent): Promise<void> {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files[0]) {
+      const file = target.files[0];
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        
+        // We will implement DawProjectLoader to handle the rest
+        const { default: DawProjectLoader } = await import("../Loader/DawProjectLoader");
+        const loader = new DawProjectLoader(this._app);
+        await loader.load(zip);
+      } catch (err) {
+        console.error("Failed to load dawproject:", err);
+        alert("Failed to load .dawproject file. See console for details.");
+      } finally {
+        target.value = ""; // Clear input for next time
+      }
+    }
+  }
+
+  public async saveDawProject(): Promise<void> {
+      try {
+          const { default: DawProjectExporter } = await import("../Loader/DawProjectExporter");
+          const exporter = new DawProjectExporter(this._app);
+          await exporter.export();
+      } catch (err) {
+          console.error("Failed to save dawproject:", err);
+          alert("Failed to save .dawproject file. See console for details.");
+      }
   }
 
   /**
@@ -429,17 +485,30 @@ export default class HostController {
 
     // MENU BUTTONS
     this._view.exportProject.addEventListener("click", () => {
-      this._app.projectController.openExportWindow();
+      this._app.projectController.openExportWindow('AUDIO');
+      this.focus(this._app.projectView);
+    })
+    this._view.exportMidi.addEventListener("click", () => {
+      this._app.projectController.openExportWindow('MIDI');
       this.focus(this._app.projectView);
     })
     this._view.saveBtn.addEventListener("click", () => {
       this._app.projectController.openSaveWindow();
       this.focus(this._app.projectView);
     })
+    this._view.saveDawProjectBtn.addEventListener("click", () => {
+      this.saveDawProject();
+    })
     this._view.loadBtn.addEventListener("click", () => {
       this._app.projectController.openLoadWindow();
       this.focus(this._app.projectView);
     })
+    this._view.loadDawProjectBtn.addEventListener("click", () => {
+      this._view.dawprojectInput.click();
+    });
+    this._view.dawprojectInput.addEventListener("change", (e) => {
+      this.loadDawProject(e as InputEvent);
+    });
     this._view.loginBtn.addEventListener("click", () => {
       this._app.projectController.openLoginWindow();
       this.focus(this._app.projectView);
@@ -480,6 +549,12 @@ export default class HostController {
     });
     this._view.newTrackInput.addEventListener("change", (e) => {
       this.importFilesSongs(e as InputEvent);
+    });
+    this._view.importMidi.addEventListener("click", () => {
+      this._view.newMidiTrackInput.click();
+    });
+    this._view.newMidiTrackInput.addEventListener("change", (e) => {
+      this.importMidiFiles(e as InputEvent);
     });
 
     // SCROLL SYNC

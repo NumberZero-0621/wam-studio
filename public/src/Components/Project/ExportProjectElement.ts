@@ -57,6 +57,10 @@ p {
         <label for="master">Master Track</label>
         <input type="checkbox" id="master-input" name="master" checked>
     </div>
+    <div class="form-element">
+        <label for="select-all">Select All</label>
+        <input type="checkbox" id="select-all-input" name="select-all">
+    </div>
     <div id="tracks-container">
     
     </div>
@@ -84,7 +88,17 @@ export default class ExportProjectElement extends HTMLElement {
     connectedCallback() {
         if (!this.initialized) {
             this.shadowRoot?.appendChild(template.content.cloneNode(true));
+            this.bindEvents();
         }
+    }
+
+    private bindEvents() {
+        const selectAllInput = this.selectAllInput;
+        selectAllInput.addEventListener("change", () => {
+            const checked = selectAllInput.checked;
+            const checkboxes = this.tracksContainer.querySelectorAll("input[type='checkbox']") as NodeListOf<HTMLInputElement>;
+            checkboxes.forEach(cb => cb.checked = checked);
+        });
     }
 
     setTitle(title: string) {
@@ -102,6 +116,10 @@ export default class ExportProjectElement extends HTMLElement {
         if (this.tracksContainer.children.length > 0) {
             this.tracksContainer.innerHTML = "";
         }
+        
+        // Reset Select All
+        this.selectAllInput.checked = false;
+
         for (let track of tracks) {
             let formElement = document.createElement("div");
             formElement.classList.add("form-element");
@@ -114,13 +132,28 @@ export default class ExportProjectElement extends HTMLElement {
             checkbox.setAttribute("type", "checkbox");
             checkbox.setAttribute("id", `input-${track.id}`);
             checkbox.setAttribute("name", track.element.name);
-            checkbox.setAttribute("checked", "true");
+            // Default unchecked as requested
+            // checkbox.setAttribute("checked", "true"); 
+
+            checkbox.addEventListener("change", () => {
+                this.updateSelectAllState();
+            });
 
             formElement.appendChild(label);
             formElement.appendChild(checkbox);
 
             this.tracksContainer.appendChild(formElement);
         }
+    }
+
+    private updateSelectAllState() {
+        const checkboxes = Array.from(this.tracksContainer.querySelectorAll("input[type='checkbox']")) as HTMLInputElement[];
+        if (checkboxes.length === 0) {
+            this.selectAllInput.checked = false;
+            return;
+        }
+        const allChecked = checkboxes.every(cb => cb.checked);
+        this.selectAllInput.checked = allChecked;
     }
 
     /**
@@ -154,6 +187,10 @@ export default class ExportProjectElement extends HTMLElement {
 
     get masterInput(): HTMLInputElement {
         return this.shadowRoot?.getElementById("master-input") as HTMLInputElement;
+    }
+
+    get selectAllInput(): HTMLInputElement {
+        return this.shadowRoot?.getElementById("select-all-input") as HTMLInputElement;
     }
 
     get tracksContainer(): HTMLDivElement {

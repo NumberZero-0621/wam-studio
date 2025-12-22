@@ -143,6 +143,20 @@ export default class ScrollBarElement extends HTMLElement {
     this.animationFrameId = window.requestAnimationFrame(animateScroll);
   }
 
+  /**
+   * Directly scroll by a delta amount without animation.
+   * Useful for wheel/touchpad events.
+   * @param delta Amount to scroll by
+   */
+  customScrollBy(delta: number) {
+    const newValue = Math.max(
+      0,
+      Math.min(this.value + delta, this.worldSize - this.size)
+    );
+    this.value = newValue;
+    this.updateHandlePosition("wheel");
+  }
+
   customScrollIncremental(deltaPixels: number) {
     const track = this.shadowRoot!.querySelector("#track") as HTMLElement;
     const handle = this.shadowRoot!.querySelector("#handle") as HTMLElement;

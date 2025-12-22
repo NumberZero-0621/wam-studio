@@ -359,6 +359,28 @@ body {
     background: rgb(79, 81, 86) !important;
 }
 
+.dropright {
+    position: relative;
+}
+
+.dropright:hover > .dropdown-menu {
+    display: block !important;
+    top: 0;
+    left: 100%;
+    margin-top: -5px;
+}
+
+.dropdown-toggle::after {
+    display: inline-block;
+    margin-left: 0.255em;
+    vertical-align: 0.255em;
+    content: "";
+    border-top: 0.3em solid transparent;
+    border-right: 0;
+    border-bottom: 0.3em solid transparent;
+    border-left: 0.3em solid;
+}
+
 
 
 .text-icon {

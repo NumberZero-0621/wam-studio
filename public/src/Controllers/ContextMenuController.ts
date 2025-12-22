@@ -23,6 +23,13 @@ export default class ContextMenuController {
             // Check if Shift is held. If so, let browser handle it.
             if (e.shiftKey) return;
 
+            // Check if hamburger menu is open
+            const hamburgerMenuBtn = document.getElementById("dropdownMenuButton");
+            if (hamburgerMenuBtn && hamburgerMenuBtn.getAttribute("aria-expanded") === "true") {
+                e.preventDefault();
+                return;
+            }
+
             e.preventDefault();
             
             // Check where the click happened to customize menu if needed

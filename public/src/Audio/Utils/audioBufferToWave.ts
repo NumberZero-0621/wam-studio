@@ -88,5 +88,28 @@ function downloadBlob(blob: Blob, fileName: string) {
     link.remove();
 }
 
+async function downloadBlobWithPicker(blob: Blob, fileName: string, types: any[]): Promise<void> {
+    if ('showSaveFilePicker' in window) {
+        try {
+            const handle = await (window as any).showSaveFilePicker({
+                suggestedName: fileName,
+                types: types
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                console.error("Failed to save file:", err);
+                // Fallback or alert? Maybe just fallback to simple download if it fails for other reasons?
+                // For now, let's respect the abort and assume errors are real errors.
+                // Optionally could fallback: downloadBlob(blob, fileName);
+            }
+        }
+    } else {
+        downloadBlob(blob, fileName);
+    }
+}
 
-export { bufferToWave, combineBuffers, downloadBlob };
+
+export { bufferToWave, combineBuffers, downloadBlob, downloadBlobWithPicker };

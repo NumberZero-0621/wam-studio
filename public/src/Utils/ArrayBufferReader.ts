@@ -8,6 +8,7 @@
 export class ArrayBufferReader{
 
     public cursor=0
+    public lastStatus: number | undefined;
     private byte_buffer
     private data_view
 
@@ -15,6 +16,9 @@ export class ArrayBufferReader{
         this.byte_buffer=new Uint8Array(buffer)
         this.data_view=new DataView(buffer)
     }
+
+    get pointer() { return this.cursor; }
+    set pointer(val: number) { this.cursor = val; }
 
     /**
      * Check if the cursor is at the end of the buffer.
@@ -110,18 +114,13 @@ export class ArrayBufferReader{
      * This is the format used in the Standard MIDI File format.
      */
     readVarUInt(): number{
-        let accumulator=0
-        let divider=1
-        while(true){
-            this.cursor+=1
-            const byte=this.readUint8()
-            if(byte>128){
-                accumulator+=divider*(byte-128)
-                divider*=2
-            }
-            else{
-                accumulator+=divider*byte
-                return accumulator
+        let value = 0;
+        while (true) {
+            if (this.cursor >= this.byte_buffer.length) return value;
+            const byte = this.byte_buffer[this.cursor++];
+            value = (value << 7) | (byte & 0x7F);
+            if ((byte & 0x80) === 0) {
+                return value;
             }
         }
     }

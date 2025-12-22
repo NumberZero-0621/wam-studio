@@ -772,7 +772,7 @@ export default class PianoRollController {
                 this.redraw();
                 
                 // Adjust for scrolling and key width
-                const yInGrid = localPos.y + this._view.scrollY;
+                const yInGrid = localPos.y + this._view.scrollY - this._view.TIMELINE_HEIGHT;
                 let xInGrid = localPos.x - this._view.KEY_WIDTH + this._view.scrollX;
                 xInGrid = this.snap(xInGrid);
 
