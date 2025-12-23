@@ -21,6 +21,7 @@ import PluginsController from "./Controllers/PluginsController";
 import ProjectController from "./Controllers/ProjectController";
 import RecorderController from "./Controllers/Recording/RecorderController";
 import SettingsController from "./Controllers/SettingsController";
+import DawiyPluginController from "./Controllers/DawiyPluginController";
 import Loader from "./Loader/Loader";
 import Host from "./Models/Track/Host";
 import AboutView from "./Views/AboutView";
@@ -32,6 +33,7 @@ import PlaygroundWindow from "./Views/PlaygroundView";
 import PluginsView from "./Views/PluginsView";
 import ProjectView from "./Views/ProjectView";
 import SettingsView from "./Views/SettingsView";
+import DawiyPluginView from "./Views/DawiyPluginView";
 import TracksView from "./Views/TracksView";
 import PianoRollController from "./Controllers/Editor/PianoRoll/PianoRollController";
 import AutoSaveController from "./Controllers/AutoSaveController";
@@ -49,6 +51,7 @@ export default class App {
     recorderController: RecorderController;
     latencyController: LatencyController;
     settingsController: SettingsController;
+    dawiyPluginController: DawiyPluginController;
     projectController: ProjectController;
     editorController: EditorController;
     waveformController: WaveformController;
@@ -67,6 +70,7 @@ export default class App {
     automationView: AutomationView;
     latencyView: LatencyView;
     settingsView: SettingsView;
+    dawiyPluginView: DawiyPluginView;
     projectView: ProjectView;
     editorView: EditorView;
     aboutView: AboutView;
@@ -90,6 +94,7 @@ export default class App {
         this.automationView = new AutomationView();
         this.latencyView = new LatencyView();
         this.settingsView = new SettingsView();
+        this.dawiyPluginView = new DawiyPluginView();
         this.projectView = new ProjectView();
         this.editorView = new EditorView();
         this.aboutView = new AboutView();
@@ -108,6 +113,8 @@ export default class App {
         this.recorderController = new RecorderController(this);
         this.latencyController = new LatencyController(this);
         this.settingsController = new SettingsController(this);
+        this.dawiyPluginController = new DawiyPluginController(this);
+        this.dawiyPluginController.setView(this.dawiyPluginView);
         this.projectController = new ProjectController(this);
         this.keyboardController = new KeyboardController(this);
         this.exportController = new ExporterController(this);
@@ -117,7 +124,7 @@ export default class App {
         this.contextMenuController = new ContextMenuController(this);
         
         this.hostController.addDraggableWindow(this.pluginsView, this.latencyView, this.settingsView, 
-            this.projectView, this.aboutView, this.keyboardShortcutsView);
+            this.projectView, this.aboutView, this.keyboardShortcutsView, this.dawiyPluginView);
 
         this.undoManager = new UndoManager();
         const old=this.undoManager.add.bind(this.undoManager)

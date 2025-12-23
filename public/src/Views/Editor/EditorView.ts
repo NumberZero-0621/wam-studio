@@ -192,10 +192,15 @@ export default class EditorView extends Application {
      * @param e Event that contains the value of the change of the scrollbar.
      */
     public handleVerticalScroll(e: ScrollEvent): void {
-        let ratio = this.worldHeight / this.height;
         if (!e.detail) throw new Error("The event on the scrollbar is not properly set. Missing the detail property.");
-        let scrollValue = e.detail.value * ratio
+        let scrollValue = e.detail.value
         if (isNaN(scrollValue)) return;
+
+        if (e.detail.type !== "propagate off") {
+            this.trackContainer.scrollTop = scrollValue;
+            this.automationContainer.scrollTop = scrollValue;
+        }
+
         if (scrollValue === 0) {
             this.viewport.position.set(this.viewport.position.x, 0);
             this.playhead.position.y = 0;
@@ -205,7 +210,7 @@ export default class EditorView extends Application {
             this.grid.position.y = 0;
         }
         else {
-            this.viewport.y=-this.trackContainer.scrollTop;
+            this.viewport.y = -scrollValue;
             
             this.playhead.position.y = -this.viewport.y;
             this.playhead.track.position.y = -this.viewport.y;
@@ -213,10 +218,6 @@ export default class EditorView extends Application {
             this.loop.track.position.y = -this.viewport.y;
 
             this.grid.position.y = -this.viewport.y;
-        }
-        if (e.detail.type !== "propagate off") {
-            this.trackContainer.scrollTop = scrollValue;
-            this.automationContainer.scrollTop = scrollValue;
         }
     }
 

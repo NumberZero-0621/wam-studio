@@ -358,7 +358,20 @@ export default class PianoRollController {
         if (!this._isVisible) return;
 
         let width = this._app.editorView.screen.width;
-        const height = this._app.editorView.screen.height;
+        let height = this._app.editorView.screen.height;
+
+        // NEW LOGIC: Add the hidden height of the plugin panel
+        // We want the piano roll to fill the space "behind" the plugin panel.
+        // The plugin panel takes up space in the layout, shrinking the editor view.
+        // We calculate how much space it's taking and add it back to the height passed to the view.
+        
+        const pluginEditor = document.getElementById("plugin-editor");
+        if (pluginEditor) {
+             const currentPluginHeight = pluginEditor.clientHeight;
+             const collapsedHeight = 25; // From PluginsView.ts
+             const hiddenHeight = Math.max(0, currentPluginHeight - collapsedHeight);
+             height += hiddenHeight;
+        }
 
         // Check for Audio Loop Browser (Sidebar)
         const browser = this._app.hostView.audioLoopBrowserDiv;

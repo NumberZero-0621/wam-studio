@@ -87,6 +87,7 @@
 
 				<a class="dropdown-item" id="latency-btn" data-i18n="menu.calibrate_latency">Calibrate latency compensation</a>
 				<a class="dropdown-item" id="settings-btn" data-i18n="menu.settings">Settings</a>
+				<a class="dropdown-item" id="dawiy-plugin-btn" data-i18n="menu.dawiy_plugin">DAWIY Plugin</a>
 
 				<div class="dropdown-divider advanced"></div>
 
@@ -233,6 +234,7 @@
 				<div id="automation-container"></div>
 			</div>
 		</div>
+        <div id="vertical-resizer"></div>
 		<div id="plugin-editor">
 			<div id="plugin-container-header">
 				<div id="header-main-track">
@@ -294,6 +296,23 @@
 						<i class="loading-icon"></i>
 					</div>
 				</div>
+
+                <div class="vertical-divider"></div>
+
+                <div id="dawiy-extensions-container">
+                    <div id="dawiy-extension-list">
+                        <!-- Dynamic list items will go here -->
+                        <!-- Example:
+                        <div class="dawiy-ext-item active" data-id="1">
+                             <div class="dawiy-ext-icon"></div>
+                        </div>
+                        -->
+                    </div>
+                    <div id="dawiy-extension-view">
+                        <!-- Content of the active extension -->
+                        <div class="dawiy-ext-placeholder">Select an extension</div>
+                    </div>
+                </div>
 			</div>
 		</div>
 	  </div>
@@ -381,6 +400,35 @@
 					<option value="ja">日本語</option>
 				</select>
 			</div>
+		</div>
+	</div>
+
+	<div id="dawiy-plugin-window" class="floating-window" hidden>
+		<div id="dawiy-plugin-header" class="header-window">
+			<span class="title" data-i18n="menu.dawiy_plugin">DAWIY Plugin</span>
+			<button id="dawiy-plugin-close-button" class="close-button">X</button>
+		</div>
+		<div class="settings-body" id="dawiy-plugin-body">
+            <!-- Plugin Manager UI will be injected here -->
+            <div class="plugin-manager-container">
+                <div class="pm-filters">
+                    <button id="pm-filter-all" class="pm-filter-btn active">All</button>
+                    <button id="pm-filter-installed" class="pm-filter-btn">Installed</button>
+                    <button id="pm-filter-not-installed" class="pm-filter-btn">Not Installed</button>
+                </div>
+                <div class="pm-list" id="pm-list">
+                    <!-- Plugin Items -->
+                    <div class="pm-item">
+                        <div class="pm-item-info">
+                             <div class="pm-item-name">Sample Plugin</div>
+                             <div class="pm-item-desc">A sample plugin description.</div>
+                        </div>
+                        <div class="pm-item-action">
+                            <button class="pm-install-btn">Install</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 		</div>
 	</div>
 

@@ -32,22 +32,24 @@ export default class PluginsView extends DraggableWindow {
     /** If the rack is maximized or not. */
     public maximized: boolean;
 
-    /** The maximum height of the rack. */
-    private readonly MAX_HEIGHT: number = 25;
+    /** The collapsed height of the rack. */
+    private readonly COLLAPSED_HEIGHT: number = 25;
 
-    /** The minimum height of the rack. */
-    private readonly MIN_HEIGHT: number = 180;
+    /** The default expanded height of the rack. */
+    public lastUserHeight: number = 250;
 
     /** Maximizes the rack to the maximum height and change the icon to minimize. */
     maximize() {
         this.minMaxIcon.className = "arrow-down-icon";
-        this.rack.style.minHeight = this.MAX_HEIGHT + "px";
+        this.rack.style.height = this.COLLAPSED_HEIGHT + "px";
+        this.rack.style.minHeight = this.COLLAPSED_HEIGHT + "px";
     }
 
     /** Minimizes the rack to the minimum height and change the icon to maximize. */
     minimize() {
         this.minMaxIcon.className = "arrow-up-icon";
-        this.rack.style.minHeight = this.MIN_HEIGHT + "px";
+        this.rack.style.height = this.lastUserHeight + "px";
+        this.rack.style.minHeight = this.lastUserHeight + "px";
     }
 
     /**

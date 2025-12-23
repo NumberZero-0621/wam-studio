@@ -327,6 +327,7 @@ export default class RegionController {
         if (key === "ArrowLeft" || key === "ArrowRight") this.stopRegionArrowRepeat();
     });
     registerOnKeyDown((key, e) => {
+        if (this._app.pianoRollController.isVisible) return;
         const meta= isKeyPressed("Control","Meta")
         switch(key){
             case "Escape": 

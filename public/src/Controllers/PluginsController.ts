@@ -51,7 +51,7 @@ export default class PluginsController {
         this.bindEvents();
         this.hideAllButtons();
 
-        this._view.maximized = true;
+        this._view.maximized = false;
         this.updateRackSize();
     }
 
@@ -247,10 +247,10 @@ export default class PluginsController {
         const maximized = !this._view.maximized;
         this._view.maximized = maximized;
         if (maximized) {
-            this._view.maximize();
+            this._view.minimize(); // Confusing, but this EXPANDS the view
             this._app.editorView.resizeCanvas();
         } else {
-            this._view.minimize();
+            this._view.maximize(); // This COLLAPSES the view
             this._app.editorView.resizeCanvas();
         }
     }

@@ -1,0 +1,26 @@
+import DraggableWindow from "../Utils/DraggableWindow";
+
+export default class DawiyPluginView extends DraggableWindow {
+
+    closeBtn = document.getElementById("dawiy-plugin-close-button") as HTMLButtonElement;
+    window = document.getElementById("dawiy-plugin-window") as HTMLDivElement;
+    override header = document.getElementById("dawiy-plugin-header") as HTMLDivElement;
+    
+    filterAllBtn = document.getElementById("pm-filter-all") as HTMLButtonElement;
+    filterInstalledBtn = document.getElementById("pm-filter-installed") as HTMLButtonElement;
+    filterNotInstalledBtn = document.getElementById("pm-filter-not-installed") as HTMLButtonElement;
+    
+    listContainer = document.getElementById("pm-list") as HTMLDivElement;
+
+    constructor() {
+        super(document.getElementById("dawiy-plugin-header") as HTMLDivElement, document.getElementById("dawiy-plugin-window") as HTMLDivElement);
+    }
+    
+    public show() {
+        this.window.hidden = false;
+    }
+    
+    public hide() {
+        this.window.hidden = true;
+    }
+}

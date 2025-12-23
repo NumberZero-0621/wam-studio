@@ -73,8 +73,15 @@ export default class HostView {
     newMidiTrackInput: HTMLInputElement = document.getElementById("new-midi-track-input") as HTMLInputElement
     latencyBtn = document.getElementById("latency-btn") as HTMLDivElement
     settingsBtn = document.getElementById("settings-btn") as HTMLDivElement
+    dawiyPluginBtn = document.getElementById("dawiy-plugin-btn") as HTMLDivElement
     saveBtn = document.getElementById("save-project") as HTMLDivElement
     saveDawProjectBtn = document.getElementById("save-dawproject") as HTMLDivElement
+
+    // Bottom Panel DAWIY Elements
+    dawiyExtensionsContainer = document.getElementById("dawiy-extensions-container") as HTMLDivElement;
+    dawiyExtensionList = document.getElementById("dawiy-extension-list") as HTMLDivElement;
+    dawiyExtensionView = document.getElementById("dawiy-extension-view") as HTMLDivElement;
+
     loadBtn = document.getElementById("load-project") as HTMLDivElement
     loadDawProjectBtn = document.getElementById("load-dawproject") as HTMLDivElement
     dawprojectInput = document.getElementById("dawproject-input") as HTMLInputElement

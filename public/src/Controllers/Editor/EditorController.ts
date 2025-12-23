@@ -200,6 +200,7 @@ export default class EditorController {
             this._view.resizeCanvas();
         });
         this._view.editorDiv.addEventListener("wheel", (e) => {
+            if (this._app.pianoRollController.isVisible) return;
             console.log("wheel called !!!!")
              // MB: Prevent the default scroll behavior (i.e., browser swipe navigation)
             e.preventDefault();

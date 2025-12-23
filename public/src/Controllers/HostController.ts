@@ -62,6 +62,7 @@ export default class HostController {
     this.initializeVuMeter();
     this.bindEvents();
     this.bindNodeListeners();
+    this.bindResizerEvents();
     this._app.host.metronomeOn = false;  // Metronome is off by default
     console.log("Initial Metronome State: " + (this._app.host.metronomeOn ? "On" : "Off"));
     this._view.updateMetronomeBtn(false);
@@ -517,6 +518,10 @@ export default class HostController {
       this._app.settingsController.openSettings();
       this.focus(this._app.settingsView);
     })
+    this._view.dawiyPluginBtn.addEventListener("click", () => {
+        this._app.dawiyPluginController.openWindow();
+        this.focus(this._app.dawiyPluginView);
+    })
 
     this._view.aboutBtn.addEventListener("click", () => {
       this._view.aboutWindow.hidden = false;
@@ -571,6 +576,58 @@ export default class HostController {
     automationDiv.addEventListener("scroll", (e: Event) => {
       if (e.target !== this.active) return
       trackDiv.scrollTop = automationDiv.scrollTop
+    });
+  }
+
+  /**
+   * Binds the events of the vertical resizer to allow dragging.
+   * @private
+   */
+  private bindResizerEvents(): void {
+    const resizer = document.getElementById('vertical-resizer') as HTMLDivElement;
+    const pluginEditor = document.getElementById('plugin-editor') as HTMLDivElement;
+    const pluginsView = this._app.pluginsView;
+
+    const mouseMoveHandler = (e: MouseEvent) => {
+        // Calculate the new height based on mouse position from the bottom of the viewport
+        const newHeight = window.innerHeight - e.clientY - (resizer.offsetHeight / 2);
+
+        // Define boundaries for resizing
+        const minHeight = 25; // Collapsed height
+        const maxHeight = window.innerHeight - 200; // Leave at least 200px for the top editor
+        
+        const clampedHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
+        
+        pluginEditor.style.height = `${clampedHeight}px`;
+        pluginEditor.style.minHeight = `${clampedHeight}px`; // Ensure minHeight is also set
+
+        // Trigger the main editor canvas resize
+        this._app.editorView.resizeCanvas();
+    };
+
+    const mouseUpHandler = () => {
+        document.removeEventListener('mousemove', mouseMoveHandler);
+        document.removeEventListener('mouseup', mouseUpHandler);
+        document.body.style.cursor = 'default';
+        document.body.style.userSelect = 'auto';
+
+        // Store the new height for when the panel is maximized again
+        const currentHeight = pluginEditor.offsetHeight;
+        if (currentHeight > 30) { // Only store if not collapsed
+            pluginsView.lastUserHeight = currentHeight;
+        }
+    };
+
+    resizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+
+        // If the panel is currently collapsed, maximizing it should be done by the dedicated button
+        // Or we can decide to let the drag maximize it. Let's do that.
+        
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
     });
   }
 
